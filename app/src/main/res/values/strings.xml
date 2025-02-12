@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">BTDreams</string>
+
+    <string name="bluetooth">Bluetooth</string>
+    <string name="wifi">Wifi</string>
+
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+</resources>
