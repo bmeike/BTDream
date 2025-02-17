@@ -6,4 +6,9 @@
 
     <string name="start">Start</string>
     <string name="stop">Stop</string>
+    <string name="permissions_required">
+        This page cannot be used without the following permissions:.
+        %1$s
+        Click "accept" to navigate to the settings page.
+    </string>
 </resources>

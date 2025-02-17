@@ -15,23 +15,35 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.ui
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -42,36 +54,82 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.couchbase.lite.mobile.android.test.bt.R
 import com.couchbase.lite.mobile.android.test.bt.vm.BTViewModel
+import com.couchbase.lite.mobile.android.test.bt.vm.ServiceModel
 import com.couchbase.lite.mobile.android.test.bt.vm.WifiViewModel
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.MultiplePermissionsState
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import kotlinx.serialization.Serializable
 
-@Serializable
-object Bluetooth
 
 @Serializable
-object Wifi
+data object Bluetooth
 
-data class TopLevelRoute<T : Any>(val route: T, val icon: Int, val label: Int)
+@Serializable
+data object Wifi
 
-val topLevelRoutes = listOf(
-    TopLevelRoute(Bluetooth, R.mipmap.ic_bt1_foreground, R.string.bluetooth),
-    TopLevelRoute(Wifi, R.mipmap.ic_wifi1_foreground, R.string.wifi)
+data class TopLevelRoute<T : Any>(val route: T, val icon: Int)
+
+val Permissions = mapOf(
+    Manifest.permission.BLUETOOTH_SCAN to "Bluetooth Scan",
+    Manifest.permission.BLUETOOTH_ADVERTISE to "Bluetooth Advertise",
+    Manifest.permission.BLUETOOTH_CONNECT to "Bluetooth Connect",
+    Manifest.permission.ACCESS_WIFI_STATE to "Wifi Access State",
+    Manifest.permission.CHANGE_WIFI_STATE to "Wifi Change State",
+    Manifest.permission.ACCESS_NETWORK_STATE to "Net Access State",
+    Manifest.permission.CHANGE_NETWORK_STATE to "Net Change State",
+    Manifest.permission.ACCESS_COARSE_LOCATION to "Coarse Location",
+    Manifest.permission.ACCESS_FINE_LOCATION to "Fine Location",
+    Manifest.permission.NEARBY_WIFI_DEVICES to "Nearby Wifi Devices",
 )
 
-@Composable
-fun BTDreamUI() {
-}
+
+val topLevelRoutes = listOf(
+    TopLevelRoute(Bluetooth, R.mipmap.ic_bt1_foreground),
+    TopLevelRoute(Wifi, R.mipmap.ic_wifi1_foreground)
+)
+
+@OptIn(ExperimentalPermissionsApi::class)
+data class PermissionsState(val showRational: MutableState<Boolean>, val state: MultiplePermissionsState)
 
 @Composable
-fun BTScreen(btModel: BTViewModel, wifiModel: WifiViewModel) {
-    wifiModel.stop()
-    ItemList("Bluetooth", btModel.start())
+fun BottomNav(nav: NavController) {
+    val navBackStackEntry by nav.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+    NavigationBar {
+        topLevelRoutes.forEach { topLevelRoute ->
+            val label = topLevelRoute.route.toString()
+            NavigationBarItem(
+                label = { Text(label) },
+                icon = {
+                    Icon(
+                        painter = painterResource(topLevelRoute.icon),
+                        contentDescription = label
+                    )
+                },
+                selected = currentDestination?.hierarchy?.any { it.hasRoute(topLevelRoute.route::class) } == true,
+                onClick = {
+                    nav.navigate(topLevelRoute.route) {
+                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            )
+        }
+    }
 }
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun WifiScreen(btModel: BTViewModel, wifiModel: WifiViewModel) {
-    btModel.stop()
-    ItemList("Wifi", wifiModel.start())
+fun BTScreen(model: BTViewModel) {
+    ItemList(Bluetooth.toString(), model)
+}
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+fun WifiScreen(model: WifiViewModel) {
+    ItemList(Wifi.toString(), model)
 }
 
 @Composable
@@ -85,47 +143,110 @@ fun Title(text: String) {
     }
 }
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun BottomNav(navController: NavController) {
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentDestination = navBackStackEntry?.destination
-    NavigationBar {
-        topLevelRoutes.forEach { topLevelRoute ->
-            val label = stringResource(topLevelRoute.label)
-            NavigationBarItem(
-                label = { Text(label) },
-                icon = {
-                    Icon(
-                        painter = painterResource(topLevelRoute.icon),
-                        contentDescription = label
-                    )
-                },
-                selected = currentDestination?.hierarchy?.any { it.hasRoute(topLevelRoute.route::class) } == true,
-                onClick = {
-                    navController.navigate(topLevelRoute.route) {
-                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                }
-            )
-        }
-    }
-}
+fun ItemList(label: String, model: ServiceModel) {
+    var peers by remember { model.peers }
 
-@Composable
-fun ItemList(label: String, items: SnapshotStateList<String>) {
+    val permState = PermissionsState(
+        remember { mutableStateOf(false) },
+        rememberMultiplePermissionsState(permissions = model.PERMISSIONS)
+    )
+
+    if (permState.showRational.value) {
+        ShowRational(permState.state.revokedPermissions.map { it.permission }, permState.showRational)
+    }
+
     Column(
         modifier = Modifier
             .padding(16.dp)
             .fillMaxWidth()
     ) {
         Title(label)
-        LazyColumn(modifier = Modifier.fillMaxWidth()) {
-            items(items.toList()) { item ->
-                Text(text = item, modifier = Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodyLarge)
-                HorizontalDivider(color = liteTertiary)
+
+        if (!permState.state.allPermissionsGranted) {
+            RequestPermissions(permState)
+        } else {
+            LaunchedEffect(Unit) { model.start() }
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                items(peers) { item ->
+                    Text(
+                        text = item,
+                        modifier = Modifier.padding(top = 12.dp),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    HorizontalDivider(color = liteTertiary)
+                }
             }
         }
     }
+}
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+fun RequestPermissions(permState: PermissionsState) {
+    android.util.Log.i("#####", "PERMISSIONS: ${permState.state.permissions.map { it.permission }}")
+    android.util.Log.i("#####", "REVOKED: ${permState.state.revokedPermissions.map { it.permission }}")
+    android.util.Log.i("#####", "GRANTED: ${permState.state.allPermissionsGranted}")
+    android.util.Log.i("#####", "RATIONAL: ${permState.state.shouldShowRationale}")
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Button(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 16.dp),
+            onClick = {
+                if (!permState.state.shouldShowRationale) {
+                    permState.state.launchMultiplePermissionRequest()
+                }
+                permState.showRational.value = permState.state.shouldShowRationale
+            }) {
+            Text(text = "Request Permissions")
+        }
+    }
+}
+
+@Composable
+fun ShowRational(revoked: List<String>, showRationalDialog: MutableState<Boolean>) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = { showRationalDialog.value = false },
+        title = { Text(text = "Permission") },
+        text = { Text(text = String.format(stringResource(R.string.permissions_required), assembleRational(revoked))) },
+        confirmButton = {
+            TextButton(onClick = {
+                showRationalDialog.value = false
+                val intent = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", context.packageName, null)
+                )
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent, null)
+            }) {
+                Text("Accept")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    showRationalDialog.value = false
+                }) {
+                Text("Refuse")
+            }
+        }
+    )
+}
+
+private fun assembleRational(revoked: List<String>): String {
+    var rational = ""
+    for (perm in revoked) {
+        if (rational.isNotEmpty()) {
+            rational += ", "
+        }
+        rational += Permissions[perm]
+    }
+    return rational
 }

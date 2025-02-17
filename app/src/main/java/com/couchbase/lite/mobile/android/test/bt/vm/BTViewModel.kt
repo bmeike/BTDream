@@ -15,39 +15,42 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.vm
 
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.lifecycle.ViewModel
+import android.Manifest
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.viewModelScope
 import com.couchbase.lite.mobile.android.test.bt.bluetooth.BTService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.launch
 
-class BTViewModel(private val btService: BTService) : ViewModel() {
+class BTViewModel(private val btService: BTService) : ServiceModel() {
     companion object {
-        const val TAG = "BT_MODEL"
+        private const val TAG = "BT_MODEL"
     }
 
-    private var _peers: SnapshotStateList<String>? = null
+    override val PERMISSIONS = listOf(
+        Manifest.permission.BLUETOOTH_SCAN,
+        Manifest.permission.BLUETOOTH_ADVERTISE,
+        Manifest.permission.BLUETOOTH_CONNECT
+    )
 
-    fun start(): SnapshotStateList<String> {
-        var peers = _peers
-        if (peers != null) return peers
+    private var job: Job? = null
+    override val peers = mutableStateOf(emptyList<String>())
 
-        peers = mutableStateListOf()
-        val peerFlow = btService.startDiscovery()
-        viewModelScope.launch(Dispatchers.IO) {
-            peerFlow.collect { peers.addAll(it) }
+    override fun start() {
+        android.util.Log.i(TAG, "Starting: $job", Exception())
+        if (job == null) {
+            job = viewModelScope.launch(Dispatchers.IO) {
+                btService.startDiscovery().cancellable().collect { peers.value = it }
+            }
         }
-        _peers = peers
-        return peers
     }
 
-    fun stop() {
-        var peers = _peers
-        _peers = null
-        if (peers != null) {
-            btService.stopDiscovery()
-        }
+    override fun stop() {
+        android.util.Log.i(TAG, "Stopping: $job")
+        val flow = job
+        job = null
+        flow?.cancel()
     }
 }

@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         applicationId = "com.couchbase.lite.mobile.android.test.bt"
-        minSdk = 28
+        minSdk = 31
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -71,12 +71,11 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.accompanist.permissions)
 
     implementation(libs.androidx.databinding.runtime)
     implementation(libs.androidx.runtime.livedata)
 
     implementation(libs.koin.core)
     implementation(libs.koin.android)
-
-    implementation(libs.couchbase.lite.android.ee)
 }

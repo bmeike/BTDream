@@ -19,14 +19,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.couchbase.lite.mobile.android.test.bt.ui.BTDreamTheme
-import com.couchbase.lite.mobile.android.test.bt.ui.BTDreamUI
 import com.couchbase.lite.mobile.android.test.bt.ui.BTScreen
 import com.couchbase.lite.mobile.android.test.bt.ui.Bluetooth
 import com.couchbase.lite.mobile.android.test.bt.ui.BottomNav
@@ -39,16 +36,20 @@ import org.koin.androidx.viewmodel.ext.android.getViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val btModel = getViewModel<BTViewModel>()
+        val wifiModel = getViewModel<WifiViewModel>()
         setContent {
             BTDreamTheme {
-                val navController = rememberNavController()
-                Scaffold(bottomBar = { BottomNav(navController) }) { innerPadding ->
-                    NavHost(navController, startDestination = Wifi, Modifier.padding(innerPadding)) {
+                val nav = rememberNavController()
+                Scaffold(bottomBar = { BottomNav(nav) }) { innerPadding ->
+                    NavHost(nav, startDestination = Bluetooth, Modifier.padding(innerPadding)) {
                         composable<Bluetooth> {
-                            BTScreen(getViewModel<BTViewModel>(), getViewModel<WifiViewModel>())
+                            wifiModel.stop()
+                            BTScreen(btModel)
                         }
                         composable<Wifi> {
-                            WifiScreen(getViewModel<BTViewModel>(), getViewModel<WifiViewModel>())
+                            btModel.stop()
+                            WifiScreen(wifiModel)
                         }
                     }
                 }
@@ -56,7 +57,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-@Preview(apiLevel = 33, showBackground = true)
-@Composable
-fun PagePreview() = BTDreamTheme { BTDreamUI() }

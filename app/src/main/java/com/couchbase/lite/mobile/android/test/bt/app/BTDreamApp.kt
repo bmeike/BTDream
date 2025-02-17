@@ -17,7 +17,6 @@ package com.couchbase.lite.mobile.android.test.bt.app
 
 import android.app.Application
 import com.couchbase.lite.mobile.android.test.bt.bluetooth.BTService
-import com.couchbase.lite.mobile.android.test.bt.service.CouchbaseLiteService
 import com.couchbase.lite.mobile.android.test.bt.vm.BTViewModel
 import com.couchbase.lite.mobile.android.test.bt.vm.WifiViewModel
 import com.couchbase.lite.mobile.android.test.bt.wifi.WifiService
@@ -28,7 +27,6 @@ import org.koin.dsl.module
 
 
 class BTDreamApp : Application() {
-
     @Suppress("USELESS_CAST")
     override fun onCreate() {
         super.onCreate()
@@ -41,7 +39,6 @@ class BTDreamApp : Application() {
             // dependency register modules
             modules(
                 module {
-                    single { CouchbaseLiteService(get()) as CouchbaseLiteService }
                     single { BTService() as BTService }
                     single { WifiService() as WifiService }
 

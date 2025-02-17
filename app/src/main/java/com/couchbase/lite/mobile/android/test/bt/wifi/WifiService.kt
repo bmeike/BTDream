@@ -18,6 +18,7 @@ package com.couchbase.lite.mobile.android.test.bt.wifi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onCompletion
 import kotlin.time.Duration.Companion.seconds
 
 class WifiService {
@@ -25,24 +26,18 @@ class WifiService {
         const val TAG = "WIFI_SVC"
     }
 
-    private var i = -1
+    private var i = 0
 
     fun startDiscovery(): Flow<List<String>> {
-        i = 0
-        android.util.Log.i(TAG, "Starting")
         return flow {
-            while (i >= 0) {
-                i++
-                android.util.Log.i(TAG, "Emitting Wifi#$i")
-                emit(listOf("Wifi#$i"))
+            android.util.Log.i(TAG, "Started")
+            while (true) {
                 delay(10.seconds)
+                if (i++ < 0) break
+                emit(listOf("Wifi#$i"))
             }
+        }.onCompletion {
             android.util.Log.i(TAG, "Stopped")
         }
-    }
-
-    fun stopDiscovery() {
-        android.util.Log.i(TAG, "Stopping")
-        i = -1
     }
 }

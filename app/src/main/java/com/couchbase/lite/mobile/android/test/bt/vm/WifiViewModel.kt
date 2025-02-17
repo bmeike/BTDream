@@ -15,40 +15,48 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.vm
 
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.lifecycle.ViewModel
+import android.Manifest
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.viewModelScope
 import com.couchbase.lite.mobile.android.test.bt.wifi.WifiService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.launch
 
 
-class WifiViewModel(private val wifiService: WifiService) : ViewModel() {
+class WifiViewModel(private val wifiService: WifiService) : ServiceModel() {
     companion object {
-        const val TAG = "WIFI_MODEL"
+        private const val TAG = "WIFI_MODEL"
     }
 
-    private var _peers: SnapshotStateList<String>? = null
+    override val PERMISSIONS = listOf(
+        Manifest.permission.ACCESS_WIFI_STATE,
+        Manifest.permission.CHANGE_WIFI_STATE,
+        Manifest.permission.ACCESS_NETWORK_STATE,
+        Manifest.permission.CHANGE_NETWORK_STATE,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.NEARBY_WIFI_DEVICES
+    )
 
-    fun start(): SnapshotStateList<String> {
-        var peers = _peers
-        if (peers != null) return peers
 
-        peers = mutableStateListOf()
-        val peerFlow = wifiService.startDiscovery()
-        viewModelScope.launch(Dispatchers.IO) {
-            peerFlow.collect { peers.addAll(it) }
+    private var job: Job? = null
+    override val peers = mutableStateOf(emptyList<String>())
+
+    override fun start() {
+        android.util.Log.i(TAG, "Starting: $job")
+        if (job == null) {
+            job = viewModelScope.launch(Dispatchers.IO) {
+                wifiService.startDiscovery().cancellable().collect { peers.value = it }
+            }
         }
-        _peers = peers
-        return peers
     }
 
-    fun stop() {
-        var peers = _peers
-        _peers = null
-        if (peers != null) {
-            wifiService.stopDiscovery()
-        }
+    override fun stop() {
+        android.util.Log.i(TAG, "Stopping: $job")
+        val flow = job
+        job = null
+        flow?.cancel()
     }
 }
