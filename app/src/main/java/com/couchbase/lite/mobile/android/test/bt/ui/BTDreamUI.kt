@@ -120,13 +120,11 @@ fun BottomNav(nav: NavController) {
     }
 }
 
-@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun BTScreen(model: BTViewModel) {
     ItemList(Bluetooth.toString(), model)
 }
 
-@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun WifiScreen(model: WifiViewModel) {
     ItemList(Wifi.toString(), model)

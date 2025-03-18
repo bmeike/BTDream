@@ -46,7 +46,7 @@ android {
 }
 
 repositories {
-    if (COUCHBASE_LITE_VERSION.endsWith("-SNAPSHOT")) {
+    if (USE_LOCAL_MAVEN) {
         mavenLocal()
     } else {
         maven {
@@ -60,6 +60,7 @@ repositories {
 
 dependencies {
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.serialization.json.jvm)
 
     implementation(platform(libs.androidx.compose.bom))
 
@@ -78,4 +79,5 @@ dependencies {
 
     implementation(libs.koin.core)
     implementation(libs.koin.android)
+
 }
