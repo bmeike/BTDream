@@ -16,6 +16,8 @@
 package com.couchbase.lite.mobile.android.test.bt.vm
 
 import android.Manifest
+import android.content.pm.PackageManager
+import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.viewModelScope
 import com.couchbase.lite.mobile.android.test.bt.bluetooth.BTService
@@ -27,7 +29,15 @@ import kotlinx.coroutines.launch
 class BTViewModel(private val btService: BTService) : ServiceModel() {
     companion object {
         private const val TAG = "BT_MODEL"
+
+        private val BT_TYPES = mapOf(
+            0 to "Unknown",
+            1 to "Classic",
+            2 to "LE",
+            3 to "Dual"
+        )
     }
+
 
     override val PERMISSIONS = listOf(
         Manifest.permission.BLUETOOTH_SCAN,
@@ -35,20 +45,37 @@ class BTViewModel(private val btService: BTService) : ServiceModel() {
         Manifest.permission.BLUETOOTH_CONNECT
     )
 
+    override val peers = mutableStateOf(emptySet<String>())
+
+    var packageManager: PackageManager? = null
+
     private var job: Job? = null
-    override val peers = mutableStateOf(emptyList<String>())
 
     override fun start() {
-        android.util.Log.i(TAG, "Starting: $job", Exception())
-        if (job == null) {
-            job = viewModelScope.launch(Dispatchers.IO) {
-                btService.startDiscovery().cancellable().collect { peers.value = it }
+        if (job != null) {
+            return
+        }
+
+        job = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                btService.startDiscovery().cancellable().collect {
+                    val devType = BT_TYPES[it.peer.type] ?: "Unknown"
+                    val peer = peers.value + "${it.peer.name}: ${devType} @${it.peer.address}"
+
+                    if (it.visible) {
+                        peers.value = peers.value + peer
+                    } else {
+                        peers.value = peers.value - peer
+                    }
+                }
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Discovery failed", e)
             }
         }
     }
 
     override fun stop() {
-        android.util.Log.i(TAG, "Stopping: $job")
+        Log.i(TAG, "Stopping: $job")
         val flow = job
         job = null
         flow?.cancel()

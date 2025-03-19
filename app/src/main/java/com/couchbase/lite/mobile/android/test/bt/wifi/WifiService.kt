@@ -28,13 +28,13 @@ class WifiService {
 
     private var i = 0
 
-    fun startDiscovery(): Flow<List<String>> {
+    fun startDiscovery(): Flow<String> {
         return flow {
             android.util.Log.i(TAG, "Started")
             while (true) {
                 delay(10.seconds)
                 if (i++ < 0) break
-                emit(listOf("Wifi#$i"))
+                emit("Wifi#$i")
             }
         }.onCompletion {
             android.util.Log.i(TAG, "Stopped")

@@ -20,7 +20,7 @@ import androidx.lifecycle.ViewModel
 
 abstract class ServiceModel : ViewModel() {
     abstract val PERMISSIONS: List<String>
-    abstract val peers: MutableState<List<String>>
+    abstract val peers: MutableState<Set<String>>
     abstract fun start()
     abstract fun stop()
-}
+ }

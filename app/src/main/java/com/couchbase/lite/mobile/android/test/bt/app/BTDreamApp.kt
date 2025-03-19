@@ -39,7 +39,7 @@ class BTDreamApp : Application() {
             // dependency register modules
             modules(
                 module {
-                    single { BTService() as BTService }
+                    single { BTService(get()) as BTService }
                     single { WifiService() as WifiService }
 
                     viewModel { BTViewModel(get()) }

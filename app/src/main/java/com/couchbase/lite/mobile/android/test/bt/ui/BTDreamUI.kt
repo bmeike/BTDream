@@ -40,7 +40,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -144,7 +143,7 @@ fun Title(text: String) {
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun ItemList(label: String, model: ServiceModel) {
-    var peers by remember { model.peers }
+    val peers by remember { model.peers }
 
     val permState = PermissionsState(
         remember { mutableStateOf(false) },
@@ -167,7 +166,7 @@ fun ItemList(label: String, model: ServiceModel) {
         } else {
             LaunchedEffect(Unit) { model.start() }
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                items(peers) { item ->
+                items(peers.toList()) { item ->
                     Text(
                         text = item,
                         modifier = Modifier.padding(top = 12.dp),

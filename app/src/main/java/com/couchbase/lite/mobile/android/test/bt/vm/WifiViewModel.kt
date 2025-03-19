@@ -42,13 +42,16 @@ class WifiViewModel(private val wifiService: WifiService) : ServiceModel() {
 
 
     private var job: Job? = null
-    override val peers = mutableStateOf(emptyList<String>())
+    override val peers = mutableStateOf(emptySet<String>())
 
     override fun start() {
         android.util.Log.i(TAG, "Starting: $job")
         if (job == null) {
             job = viewModelScope.launch(Dispatchers.IO) {
-                wifiService.startDiscovery().cancellable().collect { peers.value = it }
+                wifiService.startDiscovery().cancellable().collect {
+                    val v = peers.value + it
+                    peers.value = v
+                }
             }
         }
     }

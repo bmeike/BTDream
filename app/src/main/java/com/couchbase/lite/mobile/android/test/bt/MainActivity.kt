@@ -14,6 +14,7 @@
 // limitations under the License.
 package com.couchbase.lite.mobile.android.test.bt
 
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -36,8 +37,12 @@ import org.koin.androidx.viewmodel.ext.android.getViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         val btModel = getViewModel<BTViewModel>()
+        btModel.packageManager = packageManager
+
         val wifiModel = getViewModel<WifiViewModel>()
+
         setContent {
             BTDreamTheme {
                 val nav = rememberNavController()
