@@ -14,7 +14,6 @@
 // limitations under the License.
 package com.couchbase.lite.mobile.android.test.bt
 
-import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -39,7 +38,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val btModel = getViewModel<BTViewModel>()
-        btModel.packageManager = packageManager
+        btModel.init(this)
 
         val wifiModel = getViewModel<WifiViewModel>()
 
@@ -49,11 +48,11 @@ class MainActivity : ComponentActivity() {
                 Scaffold(bottomBar = { BottomNav(nav) }) { innerPadding ->
                     NavHost(nav, startDestination = Bluetooth, Modifier.padding(innerPadding)) {
                         composable<Bluetooth> {
-                            wifiModel.stop()
+                            wifiModel.stopBrowsing()
                             BTScreen(btModel)
                         }
                         composable<Wifi> {
-                            btModel.stop()
+                            btModel.stopBrowsing()
                             WifiScreen(wifiModel)
                         }
                     }

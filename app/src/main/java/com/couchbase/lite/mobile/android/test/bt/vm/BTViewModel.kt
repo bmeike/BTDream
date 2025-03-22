@@ -15,18 +15,25 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.vm
 
-import android.Manifest
-import android.content.pm.PackageManager
+import android.bluetooth.BluetoothAdapter
+import android.content.Context
+import android.content.Intent
 import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewModelScope
-import com.couchbase.lite.mobile.android.test.bt.bluetooth.BTService
+import com.couchbase.lite.mobile.android.test.bt.provider.bluetooth.BTService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.launch
 
-class BTViewModel(private val btService: BTService) : ServiceModel() {
+
+class BTViewModel(private val btService: BTService) : ProviderViewModel() {
     companion object {
         private const val TAG = "BT_MODEL"
 
@@ -38,46 +45,82 @@ class BTViewModel(private val btService: BTService) : ServiceModel() {
         )
     }
 
-
-    override val PERMISSIONS = listOf(
-        Manifest.permission.BLUETOOTH_SCAN,
-        Manifest.permission.BLUETOOTH_ADVERTISE,
-        Manifest.permission.BLUETOOTH_CONNECT
-    )
+    interface Publisher : DefaultLifecycleObserver {
+        fun startPublishing()
+    }
 
     override val peers = mutableStateOf(emptySet<String>())
 
-    var packageManager: PackageManager? = null
+    private var discoveryJob: Job? = null
+    private var publisher: Publisher? = null
 
-    private var job: Job? = null
+    override fun init(act: ComponentActivity) {
+        val publicationContract = object : ActivityResultContract<Int, Any?>() {
+            override fun createIntent(context: Context, input: Int): Intent {
+                return Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE).apply {
+                    putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, input)
+                }
+            }
 
-    override fun start() {
-        if (job != null) {
-            return
+            override fun parseResult(resultCode: Int, intent: Intent?): Any? {
+                return if (resultCode == BluetoothAdapter.ERROR) null else resultCode
+            }
         }
 
-        job = viewModelScope.launch(Dispatchers.IO) {
-            try {
-                btService.startDiscovery().cancellable().collect {
-                    val devType = BT_TYPES[it.peer.type] ?: "Unknown"
-                    val peer = peers.value + "${it.peer.name}: ${devType} @${it.peer.address}"
+        val registry = act.activityResultRegistry
 
-                    if (it.visible) {
-                        peers.value = peers.value + peer
-                    } else {
-                        peers.value = peers.value - peer
-                    }
+        // ??? I'm don't really know if this is necessary or sufficient
+        // to unregister the activity result launcher when the activity is destroyed
+        val pub = object : Publisher {
+            var launcher: ActivityResultLauncher<Int>? = null
+
+            override fun onCreate(owner: LifecycleOwner) {
+                launcher = registry.register("bt.publisher", owner, publicationContract) { t ->
+                    android.util.Log.d(TAG, "Visible in bluetooth for $t seconds")
                 }
-            } catch (e: SecurityException) {
-                Log.e(TAG, "Discovery failed", e)
+            }
+
+            override fun startPublishing() = launcher?.launch(300) ?: Unit
+        }
+
+        act.lifecycle.addObserver(pub)
+        publisher = pub
+    }
+
+    override fun getRequiredPermissions() = btService.PERMISSIONS
+
+    override fun startPublishing() = publisher?.startPublishing() ?: Unit
+
+    override fun stopPublishing() = Unit
+
+    override fun startBrowsing() {
+        synchronized(this) {
+            if (discoveryJob != null) {
+                return
+            }
+
+            discoveryJob = viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    btService.startBrowsing()?.cancellable()?.collect {
+                        val devType = BT_TYPES[it.peer.type] ?: "Unknown"
+                        val peer = "${it.peer.name}: ${devType} @${it.peer.address}"
+
+                        if (it.visible) {
+                            peers.value = peers.value + peer
+                        } else {
+                            peers.value = peers.value - peer
+                        }
+                    }
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "Insufficient permissions for discovery", e)
+                }
             }
         }
     }
 
-    override fun stop() {
-        Log.i(TAG, "Stopping: $job")
-        val flow = job
-        job = null
-        flow?.cancel()
+    override fun stopBrowsing() {
+        val job = discoveryJob
+        discoveryJob = null
+        job?.cancel()
     }
 }

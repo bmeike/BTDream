@@ -15,12 +15,18 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.vm
 
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.MutableState
 import androidx.lifecycle.ViewModel
 
-abstract class ServiceModel : ViewModel() {
-    abstract val PERMISSIONS: List<String>
+
+abstract class ProviderViewModel : ViewModel() {
     abstract val peers: MutableState<Set<String>>
-    abstract fun start()
-    abstract fun stop()
- }
+
+    abstract fun init(act: ComponentActivity)
+    abstract fun getRequiredPermissions(): List<String>
+    abstract fun startPublishing()
+    abstract fun stopPublishing()
+    abstract fun startBrowsing()
+    abstract fun stopBrowsing()
+}

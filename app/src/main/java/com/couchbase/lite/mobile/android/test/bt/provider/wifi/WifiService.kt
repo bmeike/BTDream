@@ -13,18 +13,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-package com.couchbase.lite.mobile.android.test.bt.wifi
+package com.couchbase.lite.mobile.android.test.bt.provider.wifi
 
+import android.Manifest
+import androidx.activity.ComponentActivity
+import com.couchbase.lite.mobile.android.test.bt.provider.PeerVisibilityChange
+import com.couchbase.lite.mobile.android.test.bt.provider.Provider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onCompletion
 import kotlin.time.Duration.Companion.seconds
 
-class WifiService {
+class WifiService : Provider {
     companion object {
         const val TAG = "WIFI_SVC"
     }
+
+    override val PERMISSIONS = listOf(
+        Manifest.permission.ACCESS_WIFI_STATE,
+        Manifest.permission.CHANGE_WIFI_STATE,
+        Manifest.permission.ACCESS_NETWORK_STATE,
+        Manifest.permission.CHANGE_NETWORK_STATE,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.NEARBY_WIFI_DEVICES
+    )
 
     private var i = 0
 
@@ -39,5 +53,25 @@ class WifiService {
         }.onCompletion {
             android.util.Log.i(TAG, "Stopped")
         }
+    }
+
+    override fun init() {
+        TODO("Not yet implemented")
+    }
+
+    override fun startPublishing(act: ComponentActivity) {
+        TODO("Not yet implemented")
+    }
+
+    override fun stopPublishing() {
+        TODO("Not yet implemented")
+    }
+
+    override fun startBrowsing(): Flow<PeerVisibilityChange>? {
+        TODO("Not yet implemented")
+    }
+
+    override fun stopBrowsing() {
+        TODO("Not yet implemented")
     }
 }

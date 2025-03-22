@@ -15,36 +15,29 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.vm
 
-import android.Manifest
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.viewModelScope
-import com.couchbase.lite.mobile.android.test.bt.wifi.WifiService
+import com.couchbase.lite.mobile.android.test.bt.provider.wifi.WifiService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.launch
 
 
-class WifiViewModel(private val wifiService: WifiService) : ServiceModel() {
+class WifiViewModel(private val wifiService: WifiService) : ProviderViewModel() {
     companion object {
         private const val TAG = "WIFI_MODEL"
     }
 
-    override val PERMISSIONS = listOf(
-        Manifest.permission.ACCESS_WIFI_STATE,
-        Manifest.permission.CHANGE_WIFI_STATE,
-        Manifest.permission.ACCESS_NETWORK_STATE,
-        Manifest.permission.CHANGE_NETWORK_STATE,
-        Manifest.permission.ACCESS_COARSE_LOCATION,
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.NEARBY_WIFI_DEVICES
-    )
-
 
     private var job: Job? = null
     override val peers = mutableStateOf(emptySet<String>())
+    override fun init(act: ComponentActivity) = TODO("Not yet implemented")
 
-    override fun start() {
+    override fun getRequiredPermissions() = wifiService.PERMISSIONS
+
+    override fun startBrowsing() {
         android.util.Log.i(TAG, "Starting: $job")
         if (job == null) {
             job = viewModelScope.launch(Dispatchers.IO) {
@@ -56,10 +49,18 @@ class WifiViewModel(private val wifiService: WifiService) : ServiceModel() {
         }
     }
 
-    override fun stop() {
+    override fun stopBrowsing() {
         android.util.Log.i(TAG, "Stopping: $job")
         val flow = job
         job = null
         flow?.cancel()
+    }
+
+    override fun startPublishing() {
+        TODO("Not yet implemented")
+    }
+
+    override fun stopPublishing() {
+        TODO("Not yet implemented")
     }
 }

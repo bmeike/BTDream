@@ -53,7 +53,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.couchbase.lite.mobile.android.test.bt.R
 import com.couchbase.lite.mobile.android.test.bt.vm.BTViewModel
-import com.couchbase.lite.mobile.android.test.bt.vm.ServiceModel
+import com.couchbase.lite.mobile.android.test.bt.vm.ProviderViewModel
 import com.couchbase.lite.mobile.android.test.bt.vm.WifiViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.MultiplePermissionsState
@@ -142,12 +142,12 @@ fun Title(text: String) {
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun ItemList(label: String, model: ServiceModel) {
+fun ItemList(label: String, model: ProviderViewModel) {
     val peers by remember { model.peers }
 
     val permState = PermissionsState(
         remember { mutableStateOf(false) },
-        rememberMultiplePermissionsState(permissions = model.PERMISSIONS)
+        rememberMultiplePermissionsState(permissions = model.getRequiredPermissions())
     )
 
     if (permState.showRational.value) {
@@ -164,7 +164,9 @@ fun ItemList(label: String, model: ServiceModel) {
         if (!permState.state.allPermissionsGranted) {
             RequestPermissions(permState)
         } else {
-            LaunchedEffect(Unit) { model.start() }
+            LaunchedEffect(Unit) {
+                discoverPeers(model)
+            }
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
                 items(peers.toList()) { item ->
                     Text(
@@ -179,13 +181,10 @@ fun ItemList(label: String, model: ServiceModel) {
     }
 }
 
+
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun RequestPermissions(permState: PermissionsState) {
-    android.util.Log.i("#####", "PERMISSIONS: ${permState.state.permissions.map { it.permission }}")
-    android.util.Log.i("#####", "REVOKED: ${permState.state.revokedPermissions.map { it.permission }}")
-    android.util.Log.i("#####", "GRANTED: ${permState.state.allPermissionsGranted}")
-    android.util.Log.i("#####", "RATIONAL: ${permState.state.shouldShowRationale}")
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -195,12 +194,8 @@ fun RequestPermissions(permState: PermissionsState) {
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = 16.dp),
-            onClick = {
-                if (!permState.state.shouldShowRationale) {
-                    permState.state.launchMultiplePermissionRequest()
-                }
-                permState.showRational.value = permState.state.shouldShowRationale
-            }) {
+            onClick = { requestPermissions(permState) }
+        ) {
             Text(text = "Request Permissions")
         }
     }
@@ -235,6 +230,19 @@ fun ShowRational(revoked: List<String>, showRationalDialog: MutableState<Boolean
             }
         }
     )
+}
+
+@OptIn(ExperimentalPermissionsApi::class)
+private fun requestPermissions(permState: PermissionsState) {
+    if (!permState.state.shouldShowRationale) {
+        permState.state.launchMultiplePermissionRequest()
+    }
+    permState.showRational.value = permState.state.shouldShowRationale
+}
+
+private fun discoverPeers(model: ProviderViewModel) {
+    model.startPublishing()
+    model.startBrowsing()
 }
 
 private fun assembleRational(revoked: List<String>): String {

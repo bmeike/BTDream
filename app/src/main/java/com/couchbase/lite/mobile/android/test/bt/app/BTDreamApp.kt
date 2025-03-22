@@ -16,10 +16,10 @@
 package com.couchbase.lite.mobile.android.test.bt.app
 
 import android.app.Application
-import com.couchbase.lite.mobile.android.test.bt.bluetooth.BTService
+import com.couchbase.lite.mobile.android.test.bt.provider.bluetooth.BTService
 import com.couchbase.lite.mobile.android.test.bt.vm.BTViewModel
 import com.couchbase.lite.mobile.android.test.bt.vm.WifiViewModel
-import com.couchbase.lite.mobile.android.test.bt.wifi.WifiService
+import com.couchbase.lite.mobile.android.test.bt.provider.wifi.WifiService
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.core.context.GlobalContext

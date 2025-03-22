@@ -33,7 +33,7 @@
         android:maxSdkVersion="30"
         />
 
-    <!-- uses-feature android:name="android.software.companion_device_setup"/ -->
+    <uses-feature android:name="android.software.companion_device_setup"/>
     <uses-feature android:name="android.hardware.bluetooth" android:required="true"/>
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
 
