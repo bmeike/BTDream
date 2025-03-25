@@ -61,6 +61,30 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import kotlinx.serialization.Serializable
 
 
+val PERMISSION_NAMES = mapOf(
+    Manifest.permission.BLUETOOTH to "Bluetooth",
+    Manifest.permission.BLUETOOTH_ADMIN to "Bluetooth Admin",
+    Manifest.permission.ACCESS_WIFI_STATE to "Wifi Access State",
+    Manifest.permission.CHANGE_WIFI_STATE to "Wifi Change State",
+    Manifest.permission.ACCESS_NETWORK_STATE to "Net Access State",
+    Manifest.permission.CHANGE_NETWORK_STATE to "Net Change State",
+    Manifest.permission.ACCESS_COARSE_LOCATION to "Coarse Location",
+    Manifest.permission.ACCESS_FINE_LOCATION to "Fine Location",
+
+    // Android 12 permissions
+    Manifest.permission.BLUETOOTH_SCAN to "Bluetooth Scan",
+    Manifest.permission.BLUETOOTH_ADVERTISE to "Bluetooth Advertise",
+    Manifest.permission.BLUETOOTH_CONNECT to "Bluetooth Connect",
+
+    // Android 13 permissions
+    Manifest.permission.NEARBY_WIFI_DEVICES to "Nearby Wifi Devices",
+)
+
+val TOP_LEVEL_ROUTES = listOf(
+    TopLevelRoute(Bluetooth, R.mipmap.ic_bt1_foreground),
+    TopLevelRoute(Wifi, R.mipmap.ic_wifi1_foreground)
+)
+
 @Serializable
 data object Bluetooth
 
@@ -69,34 +93,12 @@ data object Wifi
 
 data class TopLevelRoute<T : Any>(val route: T, val icon: Int)
 
-val Permissions = mapOf(
-    Manifest.permission.BLUETOOTH_SCAN to "Bluetooth Scan",
-    Manifest.permission.BLUETOOTH_ADVERTISE to "Bluetooth Advertise",
-    Manifest.permission.BLUETOOTH_CONNECT to "Bluetooth Connect",
-    Manifest.permission.ACCESS_WIFI_STATE to "Wifi Access State",
-    Manifest.permission.CHANGE_WIFI_STATE to "Wifi Change State",
-    Manifest.permission.ACCESS_NETWORK_STATE to "Net Access State",
-    Manifest.permission.CHANGE_NETWORK_STATE to "Net Change State",
-    Manifest.permission.ACCESS_COARSE_LOCATION to "Coarse Location",
-    Manifest.permission.ACCESS_FINE_LOCATION to "Fine Location",
-    Manifest.permission.NEARBY_WIFI_DEVICES to "Nearby Wifi Devices",
-)
-
-
-val topLevelRoutes = listOf(
-    TopLevelRoute(Bluetooth, R.mipmap.ic_bt1_foreground),
-    TopLevelRoute(Wifi, R.mipmap.ic_wifi1_foreground)
-)
-
-@OptIn(ExperimentalPermissionsApi::class)
-data class PermissionsState(val showRational: MutableState<Boolean>, val state: MultiplePermissionsState)
-
 @Composable
 fun BottomNav(nav: NavController) {
     val navBackStackEntry by nav.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     NavigationBar {
-        topLevelRoutes.forEach { topLevelRoute ->
+        TOP_LEVEL_ROUTES.forEach { topLevelRoute ->
             val label = topLevelRoute.route.toString()
             NavigationBarItem(
                 label = { Text(label) },
@@ -145,13 +147,11 @@ fun Title(text: String) {
 fun ItemList(label: String, model: ProviderViewModel) {
     val peers by remember { model.peers }
 
-    val permState = PermissionsState(
-        remember { mutableStateOf(false) },
-        rememberMultiplePermissionsState(permissions = model.getRequiredPermissions())
-    )
+    val showRational = remember { mutableStateOf(false) }
+    val permissionState = rememberMultiplePermissionsState(permissions = model.getRequiredPermissions())
 
-    if (permState.showRational.value) {
-        ShowRational(permState.state.revokedPermissions.map { it.permission }, permState.showRational)
+    if (showRational.value) {
+        ShowRational(permissionState.revokedPermissions.map { it.permission }, showRational)
     }
 
     Column(
@@ -161,8 +161,10 @@ fun ItemList(label: String, model: ProviderViewModel) {
     ) {
         Title(label)
 
-        if (!permState.state.allPermissionsGranted) {
-            RequestPermissions(permState)
+
+        if (!permissionState.allPermissionsGranted) {
+            android.util.Log.d("#####", "REVOKED: ${permissionState.revokedPermissions.map { it.permission }}")
+            RequestPermissions(permissionState, showRational)
         } else {
             LaunchedEffect(Unit) {
                 discoverPeers(model)
@@ -184,7 +186,7 @@ fun ItemList(label: String, model: ProviderViewModel) {
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun RequestPermissions(permState: PermissionsState) {
+fun RequestPermissions(state: MultiplePermissionsState, showRational: MutableState<Boolean>) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -194,7 +196,7 @@ fun RequestPermissions(permState: PermissionsState) {
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = 16.dp),
-            onClick = { requestPermissions(permState) }
+            onClick = { requestPermissions(state, showRational) }
         ) {
             Text(text = "Request Permissions")
         }
@@ -233,11 +235,11 @@ fun ShowRational(revoked: List<String>, showRationalDialog: MutableState<Boolean
 }
 
 @OptIn(ExperimentalPermissionsApi::class)
-private fun requestPermissions(permState: PermissionsState) {
-    if (!permState.state.shouldShowRationale) {
-        permState.state.launchMultiplePermissionRequest()
+private fun requestPermissions(state: MultiplePermissionsState, showRational: MutableState<Boolean>) {
+    if (!showRational.value) {
+        state.launchMultiplePermissionRequest()
     }
-    permState.showRational.value = permState.state.shouldShowRationale
+    showRational.value = state.shouldShowRationale
 }
 
 private fun discoverPeers(model: ProviderViewModel) {
@@ -251,7 +253,7 @@ private fun assembleRational(revoked: List<String>): String {
         if (rational.isNotEmpty()) {
             rational += ", "
         }
-        rational += Permissions[perm]
+        rational += PERMISSION_NAMES[perm]
     }
     return rational
 }

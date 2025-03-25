@@ -15,7 +15,6 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.vm
 
-import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.viewModelScope
 import com.couchbase.lite.mobile.android.test.bt.provider.wifi.WifiService
@@ -31,16 +30,15 @@ class WifiViewModel(private val wifiService: WifiService) : ProviderViewModel() 
     }
 
 
-    private var job: Job? = null
-    override val peers = mutableStateOf(emptySet<String>())
-    override fun init(act: ComponentActivity) = TODO("Not yet implemented")
+    private var browser: Job? = null
+    override val peers = mutableStateOf(emptyList<String>())
 
     override fun getRequiredPermissions() = wifiService.PERMISSIONS
 
     override fun startBrowsing() {
-        android.util.Log.i(TAG, "Starting: $job")
-        if (job == null) {
-            job = viewModelScope.launch(Dispatchers.IO) {
+        android.util.Log.i(TAG, "Starting: $browser")
+        if (browser == null) {
+            browser = viewModelScope.launch(Dispatchers.IO) {
                 wifiService.startDiscovery().cancellable().collect {
                     val v = peers.value + it
                     peers.value = v
@@ -50,17 +48,15 @@ class WifiViewModel(private val wifiService: WifiService) : ProviderViewModel() 
     }
 
     override fun stopBrowsing() {
-        android.util.Log.i(TAG, "Stopping: $job")
-        val flow = job
-        job = null
-        flow?.cancel()
+        val job: Job?
+        synchronized(this) {
+            job = browser
+            browser = null
+        }
+        job?.cancel()
     }
 
-    override fun startPublishing() {
-        TODO("Not yet implemented")
-    }
+    override fun startPublishing() = Unit
 
-    override fun stopPublishing() {
-        TODO("Not yet implemented")
-    }
+    override fun stopPublishing() = Unit
 }

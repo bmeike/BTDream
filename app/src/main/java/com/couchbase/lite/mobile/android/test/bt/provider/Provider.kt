@@ -15,17 +15,12 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.provider
 
-import android.bluetooth.BluetoothDevice
-import androidx.activity.ComponentActivity
 import kotlinx.coroutines.flow.Flow
 
-data class PeerVisibilityChange(val peer: BluetoothDevice, val visible: Boolean)
+data class Peer(val name: String, val address: String, val rssi: Int, val metadata: Map<String, Any> = emptyMap())
 
 interface Provider {
     val PERMISSIONS: List<String>
-    fun init()
-    fun startPublishing(act: ComponentActivity)
-    fun stopPublishing()
-    fun startBrowsing(): Flow<PeerVisibilityChange>?
-    fun stopBrowsing()
+    fun startPublishing(): Flow<Boolean>?
+    fun startBrowsing(): Flow<Set<Peer>>?
 }

@@ -16,8 +16,7 @@
 package com.couchbase.lite.mobile.android.test.bt.provider.wifi
 
 import android.Manifest
-import androidx.activity.ComponentActivity
-import com.couchbase.lite.mobile.android.test.bt.provider.PeerVisibilityChange
+import com.couchbase.lite.mobile.android.test.bt.provider.Peer
 import com.couchbase.lite.mobile.android.test.bt.provider.Provider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -55,23 +54,15 @@ class WifiService : Provider {
         }
     }
 
-    override fun init() {
+    fun init() {
         TODO("Not yet implemented")
     }
 
-    override fun startPublishing(act: ComponentActivity) {
+    override fun startPublishing(): Flow<Boolean> {
         TODO("Not yet implemented")
     }
 
-    override fun stopPublishing() {
-        TODO("Not yet implemented")
-    }
-
-    override fun startBrowsing(): Flow<PeerVisibilityChange>? {
-        TODO("Not yet implemented")
-    }
-
-    override fun stopBrowsing() {
+    override fun startBrowsing(): Flow<Set<Peer>>? {
         TODO("Not yet implemented")
     }
 }

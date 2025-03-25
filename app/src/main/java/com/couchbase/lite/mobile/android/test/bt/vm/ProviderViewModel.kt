@@ -15,15 +15,13 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.vm
 
-import androidx.activity.ComponentActivity
 import androidx.compose.runtime.MutableState
 import androidx.lifecycle.ViewModel
 
 
 abstract class ProviderViewModel : ViewModel() {
-    abstract val peers: MutableState<Set<String>>
+    abstract val peers: MutableState<List<String>>
 
-    abstract fun init(act: ComponentActivity)
     abstract fun getRequiredPermissions(): List<String>
     abstract fun startPublishing()
     abstract fun stopPublishing()

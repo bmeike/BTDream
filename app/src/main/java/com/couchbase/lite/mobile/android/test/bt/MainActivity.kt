@@ -38,8 +38,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val btModel = getViewModel<BTViewModel>()
-        btModel.init(this)
-
         val wifiModel = getViewModel<WifiViewModel>()
 
         setContent {
@@ -48,11 +46,13 @@ class MainActivity : ComponentActivity() {
                 Scaffold(bottomBar = { BottomNav(nav) }) { innerPadding ->
                     NavHost(nav, startDestination = Bluetooth, Modifier.padding(innerPadding)) {
                         composable<Bluetooth> {
+                            wifiModel.stopPublishing()
                             wifiModel.stopBrowsing()
                             BTScreen(btModel)
                         }
                         composable<Wifi> {
                             btModel.stopBrowsing()
+                            btModel.stopPublishing()
                             WifiScreen(wifiModel)
                         }
                     }

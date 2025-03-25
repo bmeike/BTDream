@@ -4,11 +4,12 @@
     xmlns:tools="http://schemas.android.com/tools"
     >
     <!-- Request legacy Bluetooth permissions on older devices. -->
-    <uses-permission android:name="android.permission.BLUETOOTH"
-        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
 
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        />
 
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
@@ -22,21 +23,19 @@
     <uses-permission
         android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation"
-        android:minSdkVersion="33"
         />
-    <uses-permission
-        android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="32"
-        />
-    <uses-permission
-        android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30"
-        />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
-    <uses-feature android:name="android.software.companion_device_setup"/>
-    <uses-feature android:name="android.hardware.bluetooth" android:required="true"/>
-    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
-
+    <uses-feature android:name="android.software.companion_device_setup" />
+    <uses-feature
+        android:name="android.hardware.bluetooth"
+        android:required="true"
+        />
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
+        android:required="true"
+        />
 
     <application
         android:name="com.couchbase.lite.mobile.android.test.bt.app.BTDreamApp"
