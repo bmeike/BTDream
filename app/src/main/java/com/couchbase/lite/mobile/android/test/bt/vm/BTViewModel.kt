@@ -16,10 +16,15 @@
 package com.couchbase.lite.mobile.android.test.bt.vm
 
 import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.util.fastFilterNotNull
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
+import com.couchbase.lite.mobile.android.test.bt.provider.Peer
 import com.couchbase.lite.mobile.android.test.bt.provider.bluetooth.BTService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,12 +37,14 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
         private const val TAG = "BT_MODEL"
     }
 
-    override val peers = mutableStateOf(emptyList<String>())
+    override val peers = mutableStateOf(emptyList<Peer.VisiblePeer>())
 
     private var browser: Job? = null
     private var publisher: Job? = null
 
-    override fun getRequiredPermissions() = btService.PERMISSIONS
+    override fun getRequiredPermissions(context: Context) = btService.PERMISSIONS.map {
+        if (ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED) it else null
+    }.fastFilterNotNull()
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_ADVERTISE)
     override fun startPublishing() {
@@ -75,10 +82,15 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
 
             browser = viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    btService.startBrowsing()?.cancellable()?.collect {
-                        peers.value = it.map { peer -> "${peer.name} @${peer.address}" }
-                            .sortedBy { peer -> peer }
-
+                    btService.startBrowsing()?.cancellable()?.collect { changedPeers ->
+                        val currentPeers = peers.value.toMutableList()
+                        changedPeers.forEach {
+                            when (it) {
+                                is Peer.VisiblePeer -> currentPeers.add(it)
+                                is Peer.VanishedPeer -> currentPeers.remove(it as Peer)
+                            }
+                        }
+                        peers.value = currentPeers.toList()
                     }
                 } catch (e: SecurityException) {
                     Log.e(TAG, "Insufficient permissions for discovery", e)
@@ -94,5 +106,6 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
             browser = null
         }
         job?.cancel()
+        peers.value = emptyList<Peer.VisiblePeer>()
     }
 }

@@ -17,10 +17,35 @@ package com.couchbase.lite.mobile.android.test.bt.provider
 
 import kotlinx.coroutines.flow.Flow
 
-data class Peer(val name: String, val address: String, val rssi: Int, val metadata: Map<String, Any> = emptyMap())
+
+sealed class Peer(val id: String) {
+    data class VisiblePeer(
+        val pid: String,
+        val name: String,
+        val address: String,
+        val rssi: Int,
+        val metadata: Map<String, Any> = emptyMap()
+    ) : Peer(pid) {
+        override fun hashCode() = super.hashCode()
+        override fun equals(o: Any?) = super.equals(o)
+        override fun toString() = "${name} @${address}"
+    }
+
+    data class VanishedPeer(val pid: String) : Peer(pid) {
+        override fun hashCode() = super.hashCode()
+        override fun equals(o: Any?) = super.equals(o)
+    }
+
+    override fun hashCode() = id.hashCode()
+
+    override fun equals(o: Any?): Boolean {
+        val p = o as? Peer ?: return false
+        return id == p.id
+    }
+}
 
 interface Provider {
     val PERMISSIONS: List<String>
-    fun startPublishing(): Flow<Boolean>?
-    fun startBrowsing(): Flow<Set<Peer>>?
+    suspend fun startPublishing(): Flow<Boolean>?
+    suspend fun startBrowsing(): Flow<Set<Peer>>?
 }

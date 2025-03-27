@@ -15,8 +15,11 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.vm
 
+import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.viewModelScope
+import com.couchbase.lite.mobile.android.test.bt.provider.Peer
 import com.couchbase.lite.mobile.android.test.bt.provider.wifi.WifiService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,17 +34,30 @@ class WifiViewModel(private val wifiService: WifiService) : ProviderViewModel() 
 
 
     private var browser: Job? = null
-    override val peers = mutableStateOf(emptyList<String>())
+    override val peers = mutableStateOf(emptyList<Peer.VisiblePeer>())
 
-    override fun getRequiredPermissions() = wifiService.PERMISSIONS
+    override fun getRequiredPermissions(context: Context) = wifiService.PERMISSIONS
 
     override fun startBrowsing() {
-        android.util.Log.i(TAG, "Starting: $browser")
-        if (browser == null) {
+        synchronized(this) {
+            if (browser != null) {
+                return
+            }
+
             browser = viewModelScope.launch(Dispatchers.IO) {
-                wifiService.startDiscovery().cancellable().collect {
-                    val v = peers.value + it
-                    peers.value = v
+                try {
+                    wifiService.startBrowsing()?.cancellable()?.collect { changedPeers ->
+                        val currentPeers = peers.value.toMutableList()
+                        changedPeers.forEach {
+                            when (it) {
+                                is Peer.VisiblePeer -> currentPeers.add(it)
+                                is Peer.VanishedPeer -> currentPeers.remove(it as Peer)
+                            }
+                        }
+                        peers.value = currentPeers.toList()
+                    }
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "Insufficient permissions for discovery", e)
                 }
             }
         }

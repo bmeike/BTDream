@@ -58,11 +58,11 @@ class WifiService : Provider {
         TODO("Not yet implemented")
     }
 
-    override fun startPublishing(): Flow<Boolean> {
+    override suspend fun startPublishing(): Flow<Boolean> {
         TODO("Not yet implemented")
     }
 
-    override fun startBrowsing(): Flow<Set<Peer>>? {
+    override suspend fun startBrowsing(): Flow<Set<Peer>>? {
         TODO("Not yet implemented")
     }
 }

@@ -16,9 +16,14 @@
 package com.couchbase.lite.mobile.android.test.bt.ui
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.util.Log
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -61,20 +66,27 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import kotlinx.serialization.Serializable
 
 
-val PERMISSION_NAMES = mapOf(
-    Manifest.permission.BLUETOOTH to "Bluetooth",
-    Manifest.permission.BLUETOOTH_ADMIN to "Bluetooth Admin",
+private const val TAG = "BT_DREAM_UI"
+
+@SuppressLint("InlinedApi")
+val PERMISSION_RATIONALS = mapOf(
+    // Android bluetooth permissions for all API versions
+    Manifest.permission.ACCESS_COARSE_LOCATION to "Coarse Location: required for the app to get BLE scan results. Used only to get scan results; never for location.",
+    Manifest.permission.ACCESS_FINE_LOCATION to "Fine Location required for the app to get BLE scan results. Used only to get scan results; never for location.",
+
+    // Android bluetooth 11 and below permissions
+    Manifest.permission.BLUETOOTH to "Bluetooth: allows the app to connect to Bluetooth devices",
+    Manifest.permission.BLUETOOTH_ADMIN to "Bluetooth Admin: allows the app to scan for Bluetooth devices",
+
+    // Android 12 permissions
+    Manifest.permission.BLUETOOTH_SCAN to "Bluetooth Scan: allows the app to scan for Bluetooth devices",
+    Manifest.permission.BLUETOOTH_ADVERTISE to "Bluetooth Advertise: allows the app to advertise itself to other Bluetooth devices",
+    Manifest.permission.BLUETOOTH_CONNECT to "Bluetooth Connect: allows the app to connect to other Bluetooth devices",
+
     Manifest.permission.ACCESS_WIFI_STATE to "Wifi Access State",
     Manifest.permission.CHANGE_WIFI_STATE to "Wifi Change State",
     Manifest.permission.ACCESS_NETWORK_STATE to "Net Access State",
     Manifest.permission.CHANGE_NETWORK_STATE to "Net Change State",
-    Manifest.permission.ACCESS_COARSE_LOCATION to "Coarse Location",
-    Manifest.permission.ACCESS_FINE_LOCATION to "Fine Location",
-
-    // Android 12 permissions
-    Manifest.permission.BLUETOOTH_SCAN to "Bluetooth Scan",
-    Manifest.permission.BLUETOOTH_ADVERTISE to "Bluetooth Advertise",
-    Manifest.permission.BLUETOOTH_CONNECT to "Bluetooth Connect",
 
     // Android 13 permissions
     Manifest.permission.NEARBY_WIFI_DEVICES to "Nearby Wifi Devices",
@@ -148,7 +160,8 @@ fun ItemList(label: String, model: ProviderViewModel) {
     val peers by remember { model.peers }
 
     val showRational = remember { mutableStateOf(false) }
-    val permissionState = rememberMultiplePermissionsState(permissions = model.getRequiredPermissions())
+    val permissionState =
+        rememberMultiplePermissionsState(model.getRequiredPermissions(LocalContext.current.findActivity()))
 
     if (showRational.value) {
         ShowRational(permissionState.revokedPermissions.map { it.permission }, showRational)
@@ -161,18 +174,15 @@ fun ItemList(label: String, model: ProviderViewModel) {
     ) {
         Title(label)
 
-
+        Log.d(TAG, "Needed permissions: ${permissionState.revokedPermissions.map { it.permission }}")
         if (!permissionState.allPermissionsGranted) {
-            android.util.Log.d("#####", "REVOKED: ${permissionState.revokedPermissions.map { it.permission }}")
             RequestPermissions(permissionState, showRational)
         } else {
-            LaunchedEffect(Unit) {
-                discoverPeers(model)
-            }
+            LaunchedEffect(Unit) { discoverPeers(model) }
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
                 items(peers.toList()) { item ->
                     Text(
-                        text = item,
+                        text = item.toString(),
                         modifier = Modifier.padding(top = 12.dp),
                         style = MaterialTheme.typography.bodyLarge
                     )
@@ -247,13 +257,14 @@ private fun discoverPeers(model: ProviderViewModel) {
     model.startBrowsing()
 }
 
-private fun assembleRational(revoked: List<String>): String {
-    var rational = ""
-    for (perm in revoked) {
-        if (rational.isNotEmpty()) {
-            rational += ", "
-        }
-        rational += PERMISSION_NAMES[perm]
+private fun assembleRational(revoked: List<String>) = revoked.map { PERMISSION_RATIONALS[it] }
+    .joinToString("\n")
+
+fun Context.findActivity(): Activity {
+    var context = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
     }
-    return rational
+    throw IllegalStateException("findActivity must be called in the context of an Activity")
 }

@@ -15,14 +15,16 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.vm
 
+import android.content.Context
 import androidx.compose.runtime.MutableState
 import androidx.lifecycle.ViewModel
+import com.couchbase.lite.mobile.android.test.bt.provider.Peer
 
 
 abstract class ProviderViewModel : ViewModel() {
-    abstract val peers: MutableState<List<String>>
+    abstract val peers: MutableState<List<Peer.VisiblePeer>>
 
-    abstract fun getRequiredPermissions(): List<String>
+    abstract fun getRequiredPermissions(context: Context): List<String>
     abstract fun startPublishing()
     abstract fun stopPublishing()
     abstract fun startBrowsing()
