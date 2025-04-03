@@ -22,7 +22,14 @@ import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattServer
 import android.bluetooth.BluetoothGattServerCallback
 import android.bluetooth.BluetoothGattService
+import android.bluetooth.BluetoothServerSocket
+import android.bluetooth.BluetoothSocket
 import android.util.Log
+import androidx.lifecycle.AtomicReference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.IOException
 import java.util.UUID
 import kotlin.random.Random
 
@@ -44,14 +51,33 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         private val DEVICE_ID = Random.nextInt(999999).toString().toByteArray(Charsets.UTF_8)
     }
 
-    private var gattServer: BluetoothGattServer? = null
+    private val lock = Any()
+    private val gattServer = AtomicReference<BluetoothGattServer?>(null)
+    private var connections: MutableList<BLEL2CAPConnection>? = null
+
+    fun start() {
+        startGattServer()
+        startL2CAPServer()
+    }
+
+    fun stop() {
+        val server = gattServer.getAndSet(null)
+        if (server == null) {
+            Log.w(TAG, "gatt server already stopped")
+        }
+
+        closeL2CAPConnections()
+
+        // stop the gatt server: this will stop the L2CAP server as well
+        server?.close()
+    }
 
     override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-        Log.i(TAG, "state change(${device.address}, ${status}): ${newState}")
+        Log.d(TAG, "state change for ${device.address}(${status}): ${newState}")
     }
 
     override fun onServiceAdded(status: Int, service: BluetoothGattService) {
-        Log.i(TAG, "service added(${status}): ${service}")
+        Log.d(TAG, "service added(${status}): ${service}")
     }
 
     override fun onCharacteristicReadRequest(
@@ -60,19 +86,19 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         offset: Int,
         characteristic: BluetoothGattCharacteristic
     ) {
-        Log.i(TAG, "characteristic read request(${device.address}): ${characteristic.uuid}")
+        Log.i(TAG, "characteristic read request from ${device.address}: ${characteristic.uuid}")
         when (characteristic.uuid) {
             PORT_CHARACTERISTIC_ID -> {
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, DEVICE_ID)
+                gattServer.get()?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, DEVICE_ID)
             }
 
             METADATA_CHARACTERISTIC_ID -> {
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                gattServer.get()?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
             }
 
             else -> {
                 Log.w(TAG, "read for unrecognized characteristic")
-                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null)
+                gattServer.get()?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null)
             }
         }
     }
@@ -86,7 +112,7 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         offset: Int,
         value: ByteArray
     ) {
-        Log.i(TAG, "characteristic write request(${device.address}): ${requestId}")
+        Log.d(TAG, "characteristic write request from ${device.address}: ${requestId}")
     }
 
     override fun onDescriptorWriteRequest(
@@ -98,7 +124,7 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         offset: Int,
         value: ByteArray
     ) {
-        Log.i(TAG, "descriptor write request(${device.address}):: ${requestId}")
+        Log.d(TAG, "descriptor write request from ${device.address}: ${requestId}")
     }
 
     override fun onDescriptorReadRequest(
@@ -107,22 +133,27 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         offset: Int,
         descriptor: BluetoothGattDescriptor
     ) {
-        Log.i(TAG, "descriptor read request(${device.address}):: ${requestId}")
+        Log.d(TAG, "descriptor read request from ${device.address}: ${requestId}")
     }
 
     override fun onNotificationSent(device: BluetoothDevice, status: Int) {
-        Log.i(TAG, "notification sent(${device.address}, ${status})")
+        Log.d(TAG, "notification sent to ${device.address}(${status})")
     }
 
     override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
-        Log.i(TAG, "mtu changed(${device.address}): ${mtu}")
+        Log.d(TAG, "mtu changed for ${device.address}: ${mtu}")
     }
 
     override fun onExecuteWrite(device: BluetoothDevice, requestId: Int, execute: Boolean) {
-        Log.i(TAG, "execute write(${device.address}): ${requestId}, ${execute}")
+        Log.d(TAG, "execute write for ${device.address}: ${requestId}, ${execute}")
     }
 
-    fun start() {
+    private fun startGattServer() {
+        if (gattServer.get() != null) {
+            Log.w(TAG, "gatt server already started")
+            return
+        }
+
         val cblService = BluetoothGattService(P2P_NAMESPACE_ID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
         cblService.addCharacteristic(
             BluetoothGattCharacteristic(
@@ -131,10 +162,89 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
                 BluetoothGattCharacteristic.PERMISSION_READ
             )
         )
+        cblService.addCharacteristic(
+            BluetoothGattCharacteristic(
+                METADATA_CHARACTERISTIC_ID,
+                BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
+                BluetoothGattCharacteristic.PERMISSION_READ
+            )
+        )
         val server = btService.btMgr.openGattServer(btService.context, this)
         server.addService(cblService)
-        gattServer = server
+        Log.i(TAG, "gatt server started")
+
+        gattServer.compareAndSet(null, server)
+        if (gattServer.get() != server) {
+            server.close()
+        }
     }
 
-    fun stop() = gattServer?.close()
+    private fun startL2CAPServer() {
+        synchronized(lock) {
+            if (connections != null) {
+                Log.w(TAG, "l2cap server already started")
+                return
+            }
+            connections = mutableListOf()
+        }
+
+        CoroutineScope(Dispatchers.IO).launch {
+            var serverSocket: BluetoothServerSocket? = null
+            try {
+                serverSocket = btService.btAdapter.listenUsingL2capChannel()
+                Log.i(TAG, "l2cap server started @${serverSocket.psm}")
+                while (gattServer.get() != null) {
+                    Log.d(TAG, "awaiting l2cap connection")
+                    serverSocket.accept()?.let { openL2CAPConnection(it) }
+                }
+            } catch (e: IOException) {
+                Log.w(TAG, "l2cap server failed", e)
+            } finally {
+                serverSocket?.close()
+                Log.i(TAG, "l2cap server stopped")
+            }
+        }
+    }
+
+    private fun openL2CAPConnection(socket: BluetoothSocket) {
+        val connection = BLEL2CAPConnection(
+            socket,
+            this::onL2CAPDataReceived,
+            this::onL2CAPConnectionClosed
+        )
+
+        synchronized(lock) {
+            connections?.let {
+                it.add(connection)
+                connection.start()
+                Log.i(TAG, "accepted l2cap connection from ${socket.remoteDevice.address}")
+            }
+        }
+    }
+
+    private fun onL2CAPDataReceived(connection: BLEL2CAPConnection, data: ByteArray) {
+        connection.write(data) // just echo for now
+    }
+
+    private fun onL2CAPConnectionClosed(connection: BLEL2CAPConnection, error: Throwable?) {
+        Log.i(TAG, "closed l2cap connection from ${connection.remoteDevice?.address}", error)
+        synchronized(lock) { connections?.remove(connection) }
+    }
+
+    private fun closeL2CAPConnections() {
+        val connects: MutableList<BLEL2CAPConnection>?
+        synchronized(lock) {
+            connects = connections
+            connections = null
+        }
+
+        connects?.forEach {
+            try {
+                it.close()
+                Log.i(TAG, "shutdown l2cap connection from ${it.remoteDevice?.address}")
+            } catch (e: IOException) {
+                Log.i(TAG, "failed closing l2cap connection from ${it.remoteDevice?.address}", e)
+            }
+        }
+    }
 }

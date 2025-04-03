@@ -52,10 +52,10 @@ class CBLBLEDevice(
     var cblId: String? = null
         private set
 
-    val address
+    val address: String
         get() = device.address
 
-    val name
+    val name: String
         get() = device.name
 
     var state = State.DISCOVERED
@@ -72,6 +72,19 @@ class CBLBLEDevice(
             }
             return connectedGatt
         }
+
+    fun connect() {
+        setState(State.CONNECTING) ?: return
+        connectOnce()
+    }
+
+    fun close(finalState: State = State.DISCONNECTED) {
+        val gatt = connectedGatt
+        connectedGatt = null
+        gatt?.close()
+        setState(finalState)
+        peerListener.removePeer(this)
+    }
 
     override fun toString() = "${cblId}: ${name} @${address} (${state})"
 
@@ -177,19 +190,6 @@ class CBLBLEDevice(
         Log.i(TAG, "$address: service changed")
     }
 
-    fun connect() {
-        setState(State.CONNECTING) ?: return
-        connectOnce()
-    }
-
-    fun close(finalState: State = State.DISCONNECTED) {
-        val gatt = connectedGatt
-        connectedGatt = null
-        gatt?.close()
-        setState(finalState)
-        peerListener.removePeer(this)
-    }
-
     private fun connectOnce() {
         setState(State.CONNECTING) ?: return
         startTask { device.connectGatt(btService.context, false, this, BluetoothDevice.TRANSPORT_LE) }
@@ -282,7 +282,7 @@ class CBLBLEDevice(
     }
 
     private fun startTask(block: () -> Unit) {
-        currentTask = btService.runTask(block)
+        currentTask = btService.runTaskBlocking(block)
     }
 
     private fun taskComplete() {

@@ -16,6 +16,7 @@
 package com.couchbase.lite.mobile.android.test.bt.provider.ble
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
@@ -74,7 +75,7 @@ class BTService(context: Context) : Provider {
         get() = ctxt.get()?.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             ?: throw IllegalStateException("Bluetooth not supported on this device")
 
-    private val btAdapter
+    val btAdapter: BluetoothAdapter
         get() = btMgr.adapter
 
 
@@ -105,6 +106,12 @@ class BTService(context: Context) : Provider {
         PERMISSIONS = perms.toList()
     }
 
+    fun runTaskBlocking(task: () -> Unit): BlockingTask {
+        val blockingTask = BlockingTask(task)
+        btExecutor.execute(blockingTask)
+        return blockingTask
+    }
+
     @RequiresPermission(Manifest.permission.BLUETOOTH_ADVERTISE)
     override suspend fun startPublishing(): Flow<Boolean> {
         val advertiser = btAdapter.bluetoothLeAdvertiser
@@ -128,7 +135,7 @@ class BTService(context: Context) : Provider {
             val advertiseCallback = object : AdvertiseCallback() {
                 override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                     advertisingTask?.done()
-                    Log.i(TAG, "Publication succeeded")
+                    Log.i(TAG, "Publication running")
                     trySend(true)
                 }
 
@@ -139,13 +146,13 @@ class BTService(context: Context) : Provider {
                 }
             }
 
-            advertisingTask = runTask {
+            advertisingTask = runTaskBlocking {
                 advertiser.startAdvertising(settings, data, null, advertiseCallback)
                 Log.i(TAG, "Publication started")
             }
 
             awaitClose {
-                runTask {
+                runTaskBlocking {
                     advertiser.stopAdvertising(advertiseCallback)
                     btServer.stop()
                     Log.i(TAG, "Publication stopped")
@@ -184,20 +191,18 @@ class BTService(context: Context) : Provider {
                 }
             }
 
-            scan(object : DeviceListener {
-                override fun onDeviceFound(scan: ScanResult) {
-                    val device = scan.device
-                    val addr = device.address
-                    Log.i(TAG, "Found device @$addr")
-                    if (pendingDevices.containsKey(addr)) {
-                        return
-                    }
+            scan { scan ->
+                val device = scan.device
+                val addr = device.address
 
+                // ??? Should check the pending device to see if anything has changed
+                // and replace and reconnect if appropriate?
+                if (!pendingDevices.containsKey(addr)) {
                     val cblDevice = CBLBLEDevice(this@BTService, device, scan.rssi, peerListener)
                     pendingDevices[addr] = cblDevice
                     cblDevice.connect()
                 }
-            })
+            }
 
             awaitClose {
                 Log.i(TAG, "Browsing stopped")
@@ -205,13 +210,7 @@ class BTService(context: Context) : Provider {
         }.cancellable()
     }
 
-    fun runTask(task: () -> Unit): BlockingTask {
-        val blockingTask = BlockingTask(task)
-        btExecutor.execute(blockingTask)
-        return blockingTask
-    }
-
-    private fun scan(scanListener: DeviceListener) {
+    private fun scan(scanListener: (ScanResult) -> Unit) {
         val settings = ScanSettings.Builder()
             .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
             .setLegacy(false)
@@ -232,7 +231,7 @@ class BTService(context: Context) : Provider {
         val scanCallback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 advertisingTask?.done()
-                scanListener.onDeviceFound(result)
+                scanListener(result)
             }
 
             override fun onScanFailed(errorCode: Int) {
@@ -245,7 +244,7 @@ class BTService(context: Context) : Provider {
             }
         }
 
-        advertisingTask = runTask {
+        advertisingTask = runTaskBlocking {
             btScanner.startScan(listOf(filter), settings, scanCallback)
             Log.i(TAG, "Scan started")
         }
