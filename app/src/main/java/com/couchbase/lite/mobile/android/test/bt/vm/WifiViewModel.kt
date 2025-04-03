@@ -16,15 +16,9 @@
 package com.couchbase.lite.mobile.android.test.bt.vm
 
 import android.content.Context
-import android.util.Log
 import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.viewModelScope
 import com.couchbase.lite.mobile.android.test.bt.provider.Peer
 import com.couchbase.lite.mobile.android.test.bt.provider.wifi.WifiService
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.cancellable
-import kotlinx.coroutines.launch
 
 
 class WifiViewModel(private val wifiService: WifiService) : ProviderViewModel() {
@@ -32,45 +26,13 @@ class WifiViewModel(private val wifiService: WifiService) : ProviderViewModel() 
         private const val TAG = "WIFI_MODEL"
     }
 
-
-    private var browser: Job? = null
     override val peers = mutableStateOf(emptyList<Peer.VisiblePeer>())
 
     override fun getRequiredPermissions(context: Context) = wifiService.PERMISSIONS
 
-    override fun startBrowsing() {
-        synchronized(this) {
-            if (browser != null) {
-                return
-            }
+    override fun startBrowsing() = Unit
 
-            browser = viewModelScope.launch(Dispatchers.IO) {
-                try {
-                    wifiService.startBrowsing()?.cancellable()?.collect { changedPeers ->
-                        val currentPeers = peers.value.toMutableList()
-                        changedPeers.forEach {
-                            when (it) {
-                                is Peer.VisiblePeer -> currentPeers.add(it)
-                                is Peer.VanishedPeer -> currentPeers.remove(it as Peer)
-                            }
-                        }
-                        peers.value = currentPeers.toList()
-                    }
-                } catch (e: SecurityException) {
-                    Log.e(TAG, "Insufficient permissions for discovery", e)
-                }
-            }
-        }
-    }
-
-    override fun stopBrowsing() {
-        val job: Job?
-        synchronized(this) {
-            job = browser
-            browser = null
-        }
-        job?.cancel()
-    }
+    override fun stopBrowsing() = Unit
 
     override fun startPublishing() = Unit
 

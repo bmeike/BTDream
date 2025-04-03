@@ -25,7 +25,7 @@ import androidx.compose.ui.util.fastFilterNotNull
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
 import com.couchbase.lite.mobile.android.test.bt.provider.Peer
-import com.couchbase.lite.mobile.android.test.bt.provider.bluetooth.BTService
+import com.couchbase.lite.mobile.android.test.bt.provider.ble.BTService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.cancellable
@@ -55,7 +55,7 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
 
             publisher = viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    btService.startPublishing()?.cancellable()?.collect {
+                    btService.startPublishing()?.collect {
                         Log.i(TAG, "Publishing: $it")
                     }
                 } catch (e: SecurityException) {
@@ -82,13 +82,11 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
 
             browser = viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    btService.startBrowsing()?.cancellable()?.collect { changedPeers ->
+                    btService.startBrowsing()?.cancellable()?.collect { peer ->
                         val currentPeers = peers.value.toMutableList()
-                        changedPeers.forEach {
-                            when (it) {
-                                is Peer.VisiblePeer -> currentPeers.add(it)
-                                is Peer.VanishedPeer -> currentPeers.remove(it as Peer)
-                            }
+                        when (peer) {
+                            is Peer.VisiblePeer -> currentPeers.add(peer)
+                            is Peer.VanishedPeer -> currentPeers.remove(peer as Peer)
                         }
                         peers.value = currentPeers.toList()
                     }

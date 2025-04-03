@@ -20,6 +20,8 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -59,6 +61,9 @@ repositories {
 }
 
 dependencies {
+    implementation(libs.koin.core)
+    implementation(libs.koin.android)
+
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.serialization.json.jvm)
 
@@ -77,7 +82,8 @@ dependencies {
     implementation(libs.androidx.databinding.runtime)
     implementation(libs.androidx.runtime.livedata)
 
-    implementation(libs.koin.core)
-    implementation(libs.koin.android)
-
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.runner)
+    androidTestImplementation(libs.androidx.core)
+    androidTestImplementation(libs.androidx.rules)
 }

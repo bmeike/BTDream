@@ -19,27 +19,22 @@ import kotlinx.coroutines.flow.Flow
 
 
 sealed class Peer(val id: String) {
-    data class VisiblePeer(
-        val pid: String,
+    class VanishedPeer(id: String) : Peer(id)
+
+    class VisiblePeer(
+        id: String,
         val name: String,
         val address: String,
         val rssi: Int,
         val metadata: Map<String, Any> = emptyMap()
-    ) : Peer(pid) {
-        override fun hashCode() = super.hashCode()
-        override fun equals(o: Any?) = super.equals(o)
-        override fun toString() = "${name} @${address}"
-    }
-
-    data class VanishedPeer(val pid: String) : Peer(pid) {
-        override fun hashCode() = super.hashCode()
-        override fun equals(o: Any?) = super.equals(o)
+    ) : Peer(id) {
+        override fun toString() = "${name} (${id}) @${address} "
     }
 
     override fun hashCode() = id.hashCode()
 
-    override fun equals(o: Any?): Boolean {
-        val p = o as? Peer ?: return false
+    override fun equals(other: Any?): Boolean {
+        val p = other as? Peer ?: return false
         return id == p.id
     }
 }
@@ -47,5 +42,5 @@ sealed class Peer(val id: String) {
 interface Provider {
     val PERMISSIONS: List<String>
     suspend fun startPublishing(): Flow<Boolean>?
-    suspend fun startBrowsing(): Flow<Set<Peer>>?
+    suspend fun startBrowsing(): Flow<Peer>?
 }

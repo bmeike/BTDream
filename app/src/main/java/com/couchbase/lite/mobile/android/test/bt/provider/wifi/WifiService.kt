@@ -16,13 +16,13 @@
 package com.couchbase.lite.mobile.android.test.bt.provider.wifi
 
 import android.Manifest
+import android.util.Log
 import com.couchbase.lite.mobile.android.test.bt.provider.Peer
 import com.couchbase.lite.mobile.android.test.bt.provider.Provider
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.onCompletion
-import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.flow.onStart
 
 class WifiService : Provider {
     companion object {
@@ -41,28 +41,13 @@ class WifiService : Provider {
 
     private var i = 0
 
-    fun startDiscovery(): Flow<String> {
-        return flow {
-            android.util.Log.i(TAG, "Started")
-            while (true) {
-                delay(10.seconds)
-                if (i++ < 0) break
-                emit("Wifi#$i")
-            }
-        }.onCompletion {
-            android.util.Log.i(TAG, "Stopped")
-        }
-    }
-
-    fun init() {
-        TODO("Not yet implemented")
-    }
-
     override suspend fun startPublishing(): Flow<Boolean> {
-        TODO("Not yet implemented")
+        return listOf(true).asFlow()
+            .onStart { Log.i(TAG, "Publication started") }
+            .onCompletion { Log.i(TAG, "Publication stopped") }
     }
 
-    override suspend fun startBrowsing(): Flow<Set<Peer>>? {
+    override suspend fun startBrowsing(): Flow<Peer>? {
         TODO("Not yet implemented")
     }
 }
