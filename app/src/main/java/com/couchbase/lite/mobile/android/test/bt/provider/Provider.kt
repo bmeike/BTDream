@@ -28,7 +28,7 @@ sealed class Peer(val id: String) {
         val rssi: Int,
         val metadata: Map<String, Any> = emptyMap()
     ) : Peer(id) {
-        override fun toString() = "${name} (${id}) @${address} "
+        override fun toString() = "${name}(${id}) @${address} "
     }
 
     override fun hashCode() = id.hashCode()

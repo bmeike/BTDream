@@ -36,7 +36,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.cancellable
 import java.lang.ref.WeakReference
-import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
@@ -75,7 +74,7 @@ class BTService(context: Context) : Provider {
         get() = ctxt.get()?.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             ?: throw IllegalStateException("Bluetooth not supported on this device")
 
-    val btAdapter
+    private val btAdapter
         get() = btMgr.adapter
 
 

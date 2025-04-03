@@ -7,7 +7,6 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
 import android.util.Log
-import java.util.UUID
 
 
 interface PeerListener {
@@ -63,16 +62,23 @@ class CBLBLEDevice(
         private set
 
     private val lock = Any()
-    private var peerGatt: BluetoothGatt? = null
-    private var currentTask: BlockingTask? = null
     private var retries = 0
+    private var currentTask: BlockingTask? = null
+    private var connectedGatt: BluetoothGatt? = null
+    private val peerGatt: BluetoothGatt?
+        get() {
+            if (connectedGatt == null) {
+                fail("peerGatt is null")
+            }
+            return connectedGatt
+        }
 
     override fun toString() = "${cblId}: ${name} @${address} (${state})"
 
     override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
         taskComplete()
-        if ((peerGatt == null) && (gatt != null)) {
-            peerGatt = gatt
+        if ((connectedGatt == null) && (gatt != null)) {
+            connectedGatt = gatt
         }
 
         when (status) {
@@ -176,11 +182,11 @@ class CBLBLEDevice(
         connectOnce()
     }
 
-    fun close(status: State = State.DISCONNECTED) {
-        val gatt = peerGatt
-        peerGatt = null
+    fun close(finalState: State = State.DISCONNECTED) {
+        val gatt = connectedGatt
+        connectedGatt = null
         gatt?.close()
-        setState(State.FAILED)
+        setState(finalState)
         peerListener.removePeer(this)
     }
 
@@ -199,9 +205,7 @@ class CBLBLEDevice(
 
     private fun discoverServices() {
         setState(State.GET_SERVICES) ?: return
-        peerGatt?.let {
-            startTask { it.discoverServices() }
-        }
+        startTask { peerGatt?.discoverServices() }
     }
 
     private fun getCBLService(): BluetoothGattService? {
@@ -216,13 +220,13 @@ class CBLBLEDevice(
 
     private fun findCBLCharacteristic(cblService: BluetoothGattService) {
         setState(State.GET_CHARACTERISTICS) ?: return
+        val gatt = peerGatt ?: return
 
         cblService.characteristics.forEach {
             Log.d(TAG, "$address: found characteristic: ${it.uuid} (${Integer.toHexString(it.properties)})")
         }
 
-        val characteristic =
-            cblService.getCharacteristic(PORT_CHARACTERISTIC_ID)
+        val characteristic = cblService.getCharacteristic(PORT_CHARACTERISTIC_ID)
 
         if (characteristic == null) {
             fail("CBL characteristic not found")
@@ -234,18 +238,12 @@ class CBLBLEDevice(
             return
         }
 
-        peerGatt?.let {
-            startTask { it.readCharacteristic(characteristic) }
-        }
+        startTask { gatt.readCharacteristic(characteristic) }
     }
 
     private fun parseCBLCharacteristic(data: ByteArray) {
         setState(State.CONNECTED) ?: return
-
-        // !!! we should be parsing this from the byte array
-        // just use the address, for now.
-        cblId = address
-
+        cblId = data.toString(Charsets.UTF_8)
         peerListener.addPeer(this)
     }
 

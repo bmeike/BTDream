@@ -28,26 +28,26 @@ import kotlin.random.Random
 
 
 // Couchbase Lite P2P sync service UUID (randomly generated)
-val P2P_NAMESPACE_ID = UUID.fromString("E0C3793A-0739-42A2-A800-8BED236D8815")
+val P2P_NAMESPACE_ID: UUID = UUID.fromString("E0C3793A-0739-42A2-A800-8BED236D8815")
 
 // Service characteristic whose value is the L2CAP port (PSM) the peer is listening on
-val PORT_CHARACTERISTIC_ID = UUID.fromString("ABDD3056-28FA-441D-A470-55A75A52553A")
+val PORT_CHARACTERISTIC_ID: UUID = UUID.fromString("ABDD3056-28FA-441D-A470-55A75A52553A")
 
 // Service characteristic whose value is the peer's Fleece-encoded metadata (randomly generated)
-val METADATA_CHARACTERISTIC_ID = UUID.fromString("936D7669-E532-42BF-8B8D-97E3C1073F74")
+val METADATA_CHARACTERISTIC_ID: UUID = UUID.fromString("936D7669-E532-42BF-8B8D-97E3C1073F74")
 
 
 @SuppressWarnings("MissingPermission")
 class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallback() {
     companion object {
         private const val TAG = "BT_SERVER"
-        private val DEVICE_ID = Random.nextInt(999999).toString().toByteArray()
+        private val DEVICE_ID = Random.nextInt(999999).toString().toByteArray(Charsets.UTF_8)
     }
 
     private var gattServer: BluetoothGattServer? = null
 
     override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-        Log.i(TAG, "state change(${status}): ${newState}")
+        Log.i(TAG, "state change(${device.address}, ${status}): ${newState}")
     }
 
     override fun onServiceAdded(status: Int, service: BluetoothGattService) {
@@ -60,9 +60,20 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         offset: Int,
         characteristic: BluetoothGattCharacteristic
     ) {
-        Log.i(TAG, "characteristic read request: ${characteristic.uuid}")
-        if (!characteristic.uuid.equals(PORT_CHARACTERISTIC_ID)) {
-            gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, DEVICE_ID)
+        Log.i(TAG, "characteristic read request(${device.address}): ${characteristic.uuid}")
+        when (characteristic.uuid) {
+            PORT_CHARACTERISTIC_ID -> {
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, DEVICE_ID)
+            }
+
+            METADATA_CHARACTERISTIC_ID -> {
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+            }
+
+            else -> {
+                Log.w(TAG, "read for unrecognized characteristic")
+                gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, 0, null)
+            }
         }
     }
 
@@ -75,7 +86,7 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         offset: Int,
         value: ByteArray
     ) {
-        Log.i(TAG, "characteristic write request: ${requestId}")
+        Log.i(TAG, "characteristic write request(${device.address}): ${requestId}")
     }
 
     override fun onDescriptorWriteRequest(
@@ -87,7 +98,7 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         offset: Int,
         value: ByteArray
     ) {
-        Log.i(TAG, "descriptor write request: ${requestId}")
+        Log.i(TAG, "descriptor write request(${device.address}):: ${requestId}")
     }
 
     override fun onDescriptorReadRequest(
@@ -96,19 +107,19 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         offset: Int,
         descriptor: BluetoothGattDescriptor
     ) {
-        Log.i(TAG, "descriptor read request: ${requestId}")
+        Log.i(TAG, "descriptor read request(${device.address}):: ${requestId}")
     }
 
     override fun onNotificationSent(device: BluetoothDevice, status: Int) {
-        Log.i(TAG, "notification sent(${status})")
+        Log.i(TAG, "notification sent(${device.address}, ${status})")
     }
 
     override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
-        Log.i(TAG, "mtu changed: ${mtu}")
+        Log.i(TAG, "mtu changed(${device.address}): ${mtu}")
     }
 
     override fun onExecuteWrite(device: BluetoothDevice, requestId: Int, execute: Boolean) {
-        Log.i(TAG, "execute write: ${requestId}, ${execute}")
+        Log.i(TAG, "execute write(${device.address}): ${requestId}, ${execute}")
     }
 
     fun start() {

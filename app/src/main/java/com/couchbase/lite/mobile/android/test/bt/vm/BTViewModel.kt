@@ -55,7 +55,7 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
 
             publisher = viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    btService.startPublishing()?.collect {
+                    btService.startPublishing().collect {
                         Log.i(TAG, "Publishing: $it")
                     }
                 } catch (e: SecurityException) {
@@ -82,7 +82,7 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
 
             browser = viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    btService.startBrowsing()?.cancellable()?.collect { peer ->
+                    btService.startBrowsing().cancellable().collect { peer ->
                         val currentPeers = peers.value.toMutableList()
                         when (peer) {
                             is Peer.VisiblePeer -> currentPeers.add(peer)
@@ -104,6 +104,6 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
             browser = null
         }
         job?.cancel()
-        peers.value = emptyList<Peer.VisiblePeer>()
+        peers.value = emptyList()
     }
 }

@@ -39,8 +39,6 @@ class WifiService : Provider {
         Manifest.permission.NEARBY_WIFI_DEVICES
     )
 
-    private var i = 0
-
     override suspend fun startPublishing(): Flow<Boolean> {
         return listOf(true).asFlow()
             .onStart { Log.i(TAG, "Publication started") }
