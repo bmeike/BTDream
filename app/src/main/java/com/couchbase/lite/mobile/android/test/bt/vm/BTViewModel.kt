@@ -24,11 +24,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.util.fastFilterNotNull
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
-import com.couchbase.lite.mobile.android.test.bt.provider.Peer
+import com.couchbase.lite.mobile.android.test.bt.provider.ConnectedPeer
+import com.couchbase.lite.mobile.android.test.bt.provider.VanishedPeer
+import com.couchbase.lite.mobile.android.test.bt.provider.VisiblePeer
 import com.couchbase.lite.mobile.android.test.bt.provider.ble.BTService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.launch
 
 
@@ -37,14 +38,14 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
         private const val TAG = "BT_MODEL"
     }
 
-    override val peers = mutableStateOf(emptyList<Peer.VisiblePeer>())
+    override val peers = mutableStateOf(emptyMap<VisiblePeer, String>())
 
     private var browser: Job? = null
     private var publisher: Job? = null
 
     override fun getRequiredPermissions(context: Context) = btService.PERMISSIONS.map {
         if (ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED) it else null
-    }.fastFilterNotNull()
+    }.fastFilterNotNull().toSet()
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_ADVERTISE)
     override fun startPublishing() {
@@ -74,6 +75,16 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
         job?.cancel()
     }
 
+    override fun connect(peer: VisiblePeer) {
+        viewModelScope.launch(Dispatchers.IO) {
+            btService.connect(peer).collect { msg -> updateMessage(peer, msg) }
+        }
+    }
+
+    override fun send(peer: ConnectedPeer) {
+        TODO("Not yet implemented")
+    }
+
     override fun startBrowsing() {
         synchronized(this) {
             if (browser != null) {
@@ -82,13 +93,14 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
 
             browser = viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    btService.startBrowsing().cancellable().collect { peer ->
-                        val currentPeers = peers.value.toMutableList()
-                        when (peer) {
-                            is Peer.VisiblePeer -> currentPeers.add(peer)
-                            is Peer.VanishedPeer -> currentPeers.remove(peer as Peer)
-                        }
-                        peers.value = currentPeers.toList()
+                    btService.startBrowsing().collect { peer ->
+                        Log.i(TAG, "Peer changed state: ${peer}")
+                        peers.value.forEach { (p, msg) -> Log.i(TAG, "before peer ${p}: ${msg}") }
+                        val currentPeers = peers.value.toMutableMap()
+                        currentPeers.remove(peer)
+                        if (!(peer is VanishedPeer)) { currentPeers[peer as VisiblePeer] = "discovered" }
+                        peers.value = currentPeers
+                        peers.value.forEach { (p, msg) -> Log.i(TAG, "after peer ${p}: ${msg}") }
                     }
                 } catch (e: SecurityException) {
                     Log.e(TAG, "Insufficient permissions for discovery", e)
@@ -104,6 +116,14 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
             browser = null
         }
         job?.cancel()
-        peers.value = emptyList()
+        peers.value = emptyMap()
+    }
+
+
+    // !!! This is just a ridiculously expensive way to do this
+    private fun updateMessage(peer: VisiblePeer, message: String) {
+        val currentPeers = peers.value.toMutableMap()
+        currentPeers[peer] = message
+        peers.value = currentPeers
     }
 }

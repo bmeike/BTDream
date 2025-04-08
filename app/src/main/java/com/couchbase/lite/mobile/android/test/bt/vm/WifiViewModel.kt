@@ -17,7 +17,8 @@ package com.couchbase.lite.mobile.android.test.bt.vm
 
 import android.content.Context
 import androidx.compose.runtime.mutableStateOf
-import com.couchbase.lite.mobile.android.test.bt.provider.Peer
+import com.couchbase.lite.mobile.android.test.bt.provider.ConnectedPeer
+import com.couchbase.lite.mobile.android.test.bt.provider.VisiblePeer
 import com.couchbase.lite.mobile.android.test.bt.provider.wifi.WifiService
 
 
@@ -26,15 +27,25 @@ class WifiViewModel(private val wifiService: WifiService) : ProviderViewModel() 
         private const val TAG = "WIFI_MODEL"
     }
 
-    override val peers = mutableStateOf(emptyList<Peer.VisiblePeer>())
+    override val peers = mutableStateOf(emptyMap<VisiblePeer, String>())
 
     override fun getRequiredPermissions(context: Context) = wifiService.PERMISSIONS
 
-    override fun startBrowsing() = Unit
+    override fun startBrowsing() {
+    }
 
-    override fun stopBrowsing() = Unit
+    override fun stopBrowsing() {
+    }
 
-    override fun startPublishing() = Unit
+    override fun connect(peer: VisiblePeer) {
+    }
 
-    override fun stopPublishing() = Unit
+    override fun send(peer: ConnectedPeer) {
+    }
+
+    override fun startPublishing() {
+    }
+
+    override fun stopPublishing() {
+    }
 }

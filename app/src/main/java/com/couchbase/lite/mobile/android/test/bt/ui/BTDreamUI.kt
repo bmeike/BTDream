@@ -24,12 +24,15 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import android.util.Log
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
@@ -39,14 +42,18 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -57,6 +64,8 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.couchbase.lite.mobile.android.test.bt.R
+import com.couchbase.lite.mobile.android.test.bt.provider.ConnectedPeer
+import com.couchbase.lite.mobile.android.test.bt.provider.VisiblePeer
 import com.couchbase.lite.mobile.android.test.bt.vm.BTViewModel
 import com.couchbase.lite.mobile.android.test.bt.vm.ProviderViewModel
 import com.couchbase.lite.mobile.android.test.bt.vm.WifiViewModel
@@ -69,7 +78,7 @@ import kotlinx.serialization.Serializable
 private const val TAG = "BT_DREAM_UI"
 
 @SuppressLint("InlinedApi")
-val PERMISSION_RATIONALS = mapOf(
+private val PERMISSION_RATIONALS = mapOf(
     // Android bluetooth permissions for all API versions
     Manifest.permission.ACCESS_COARSE_LOCATION to "Coarse Location: required for the app to get BLE scan results. Used only to get scan results; never for location.",
     Manifest.permission.ACCESS_FINE_LOCATION to "Fine Location required for the app to get BLE scan results. Used only to get scan results; never for location.",
@@ -92,9 +101,16 @@ val PERMISSION_RATIONALS = mapOf(
     Manifest.permission.NEARBY_WIFI_DEVICES to "Nearby Wifi Devices",
 )
 
-val TOP_LEVEL_ROUTES = listOf(
+private data class TopLevelRoute<T : Any>(val route: T, val icon: Int)
+
+private val TOP_LEVEL_ROUTES = listOf(
     TopLevelRoute(Bluetooth, R.mipmap.ic_bt1_foreground),
     TopLevelRoute(Wifi, R.mipmap.ic_wifi1_foreground)
+)
+
+private val TEXT_COLOR = mapOf(
+    VisiblePeer::class to darkVisibleText,
+    ConnectedPeer::class to darkConnectedText
 )
 
 @Serializable
@@ -102,8 +118,6 @@ data object Bluetooth
 
 @Serializable
 data object Wifi
-
-data class TopLevelRoute<T : Any>(val route: T, val icon: Int)
 
 @Composable
 fun BottomNav(nav: NavController) {
@@ -158,10 +172,13 @@ fun Title(text: String) {
 @Composable
 fun ItemList(label: String, model: ProviderViewModel) {
     val peers by remember { model.peers }
+    val text = remember { mutableStateMapOf<String, String>() }
+
 
     val showRational = remember { mutableStateOf(false) }
-    val permissionState =
-        rememberMultiplePermissionsState(model.getRequiredPermissions(LocalContext.current.findActivity()))
+    val permissionState = rememberMultiplePermissionsState(
+        model.getRequiredPermissions(LocalContext.current.findActivity()).toList()
+    )
 
     if (showRational.value) {
         ShowRational(permissionState.revokedPermissions.map { it.permission }, showRational)
@@ -180,13 +197,40 @@ fun ItemList(label: String, model: ProviderViewModel) {
         } else {
             LaunchedEffect(Unit) { discoverPeers(model) }
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                items(peers.toList()) { item ->
-                    Text(
-                        text = item.toString(),
-                        modifier = Modifier.padding(top = 12.dp),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    HorizontalDivider(color = liteTertiary)
+                items(peers.keys.toList()) { peer ->
+                    val textColor = TEXT_COLOR[peer::class] ?: Color.Black
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight()
+                            .padding(top = 12.dp)
+                    ) {
+                        Text(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight()
+                                .padding(top = 8.dp)
+                                .clickable { model.connect(peer) },
+                            text = peer.toString(),
+                            color = textColor,
+                            style = MaterialTheme.typography.bodyMedium)
+                        if (peer is ConnectedPeer) {
+                            TextField(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .wrapContentHeight()
+                                    .padding(top = 4.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = TextFieldDefaults.colors().copy(
+                                    unfocusedIndicatorColor = darkSurface
+                                ),
+                                textStyle = MaterialTheme.typography.bodyLarge,
+                                singleLine = true,
+                                value = text[peer.id] ?: "",
+                                onValueChange = { text[peer.id] = it })
+                        }
+                        HorizontalDivider(color = liteTertiary)
+                    }
                 }
             }
         }

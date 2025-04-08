@@ -6,13 +6,10 @@ import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
+import android.bluetooth.BluetoothSocket
 import android.util.Log
+import java.util.UUID
 
-
-interface PeerListener {
-    fun addPeer(peer: CBLBLEDevice)
-    fun removePeer(peer: CBLBLEDevice)
-}
 
 fun BluetoothGattCharacteristic.isReadable() =
     containsProperty(BluetoothGattCharacteristic.PROPERTY_READ)
@@ -31,7 +28,9 @@ class CBLBLEDevice(
     private val btService: BTService,
     private val device: BluetoothDevice,
     val rssi: Int,
-    private val peerListener: PeerListener
+    private val onFound: (CBLBLEDevice) -> Unit,
+    private val onConnected: (CBLBLEDevice) -> Unit,
+    private val onLost: (CBLBLEDevice) -> Unit,
 ) : BluetoothGattCallback() {
     companion object {
         private const val TAG = "CBL_DEVICE"
@@ -43,20 +42,29 @@ class CBLBLEDevice(
         GET_SERVICES,
         GET_CHARACTERISTICS,
         CONNECTED,
+        OPENING,
+        OPENED,
         DISCONNECTED,
         FAILED;
 
         fun next() = State.entries[(ordinal + 1) % State.entries.size]
     }
 
-    var cblId: String? = null
-        private set
 
     val address: String
         get() = device.address
 
     val name: String
         get() = device.name
+
+    var port: Int? = null
+        private set
+
+    var cblId: String? = null
+        private set
+
+    var metadata: Map<String, Any>? = null
+        private set
 
     var state = State.DISCOVERED
         private set
@@ -65,6 +73,8 @@ class CBLBLEDevice(
     private var retries = 0
     private var currentTask: BlockingTask? = null
     private var connectedGatt: BluetoothGatt? = null
+    private var connection: BLEL2CAPConnection? = null
+    private var requiredCharacteristics: MutableList<UUID> = CBL_CHARACTERISTICS.keys.toMutableList()
     private val peerGatt: BluetoothGatt?
         get() {
             if (connectedGatt == null) {
@@ -73,17 +83,50 @@ class CBLBLEDevice(
             return connectedGatt
         }
 
+
     fun connect() {
         setState(State.CONNECTING) ?: return
         connectOnce()
     }
 
+    fun open(onData: (String) -> Unit) {
+        if (state >= State.OPENING) {
+            return
+        }
+        setState(State.OPENING) ?: return
+        val psm = port ?: return
+
+        startTask {
+            var socket: BluetoothSocket? = null
+            try {
+                socket = peerGatt?.device?.createInsecureL2capChannel(psm)
+                socket?.connect()
+            } catch (e: Exception) {
+                fail("failed to create L2cap channel", e)
+                socket?.close()
+                socket = null
+            }
+            opened(socket, onData)
+        }
+    }
+
     fun close(finalState: State = State.DISCONNECTED) {
+        val connect = connection
+        connection = null
+        connect?.close()
+
         val gatt = connectedGatt
         connectedGatt = null
         gatt?.close()
+
         setState(finalState)
-        peerListener.removePeer(this)
+
+        onLost(this)
+    }
+
+    fun send(msg: String) {
+        val connect = connection ?: return
+        connect.write(msg.toByteArray(Charsets.UTF_8))
     }
 
     override fun toString() = "${cblId}: ${name} @${address} (${state})"
@@ -109,15 +152,17 @@ class CBLBLEDevice(
 
     override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
         taskComplete()
-        when (status) {
-            BluetoothGatt.GATT_SUCCESS -> {
-                Log.i(TAG, "$address: services discovered")
-                getCBLService()?.let { findCBLCharacteristic(it) }
-                    ?: fail("CBL service not found")
-            }
-
-            else -> fail("unexpected status on service discovery: $status")
+        if (status != BluetoothGatt.GATT_SUCCESS) {
+            fail("unexpected status on service discovery: $status")
+            return
         }
+
+        val cblService = getCBLService() ?: return
+        readCharacteristics(cblService)
+    }
+
+    override fun onServiceChanged(gatt: BluetoothGatt) {
+        Log.d(TAG, "$address: service changed")
     }
 
     override fun onCharacteristicRead(
@@ -127,22 +172,16 @@ class CBLBLEDevice(
         status: Int
     ) {
         taskComplete()
-        when (status) {
-            BluetoothGatt.GATT_SUCCESS -> {
-                Log.i(TAG, "$address: characteristic read: ${value.size} bytes")
-                parseCBLCharacteristic(value)
-            }
-
-            else -> fail("unexpected status on characteristic read: $status")
+        if (status != BluetoothGatt.GATT_SUCCESS) {
+            fail("unexpected status on characteristic read: $status")
+            return
         }
-    }
 
-    override fun onPhyUpdate(gatt: BluetoothGatt?, txPhy: Int, rxPhy: Int, status: Int) {
-        Log.i(TAG, "$address(${status}): phy update: ${txPhy} ${txPhy}")
-    }
+        parseCBLCharacteristic(characteristic, value)
 
-    override fun onPhyRead(gatt: BluetoothGatt?, txPhy: Int, rxPhy: Int, status: Int) {
-        Log.i(TAG, "$address(${status}): phy read: ${txPhy} ${txPhy}")
+        if (!readNextCharacteristic()) {
+            connected()
+        }
     }
 
     override fun onCharacteristicWrite(
@@ -150,7 +189,7 @@ class CBLBLEDevice(
         characteristic: BluetoothGattCharacteristic?,
         status: Int
     ) {
-        Log.i(TAG, "$address(${status}): characteristic write: ${characteristic}")
+        Log.d(TAG, "$address(${status}): characteristic write: ${characteristic}")
     }
 
     override fun onCharacteristicChanged(
@@ -158,7 +197,30 @@ class CBLBLEDevice(
         characteristic: BluetoothGattCharacteristic,
         value: ByteArray
     ) {
-        Log.i(TAG, "$address: characteristic changed: ${characteristic}, ${value.size}")
+        Log.d(TAG, "$address: characteristic changed: ${characteristic}, ${value.size}")
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
+        Log.d(TAG, "$address: deprecated characteristic read(${status})")
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
+        Log.d(TAG, "$address: deprecated characteristic changed: ${characteristic}")
+    }
+
+    override fun onPhyUpdate(gatt: BluetoothGatt?, txPhy: Int, rxPhy: Int, status: Int) {
+        Log.d(TAG, "$address(${status}): phy update: ${txPhy} ${txPhy}")
+    }
+
+    override fun onPhyRead(gatt: BluetoothGatt?, txPhy: Int, rxPhy: Int, status: Int) {
+        Log.d(TAG, "$address(${status}): phy read: ${txPhy} ${txPhy}")
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onDescriptorRead(gatt: BluetoothGatt?, descriptor: BluetoothGattDescriptor?, status: Int) {
+        Log.d(TAG, "$address: deprecated descriptor read(${status}): ${descriptor}")
     }
 
     override fun onDescriptorRead(
@@ -167,27 +229,23 @@ class CBLBLEDevice(
         status: Int,
         value: ByteArray
     ) {
-        Log.i(TAG, "$address(${status}): descriptor read: ${descriptor}, ${value.size}")
+        Log.d(TAG, "$address(${status}): descriptor read: ${descriptor}, ${value.size}")
     }
 
     override fun onDescriptorWrite(gatt: BluetoothGatt?, descriptor: BluetoothGattDescriptor?, status: Int) {
-        Log.i(TAG, "$address(${status}): descriptor write: ${descriptor}")
+        Log.d(TAG, "$address(${status}): descriptor write: ${descriptor}")
     }
 
     override fun onReliableWriteCompleted(gatt: BluetoothGatt?, status: Int) {
-        Log.i(TAG, "$address(${status}): write complete")
+        Log.d(TAG, "$address(${status}): write complete")
     }
 
     override fun onReadRemoteRssi(gatt: BluetoothGatt?, rssi: Int, status: Int) {
-        Log.i(TAG, "$address(${status}): rssi read: ${rssi}")
+        Log.d(TAG, "$address(${status}): rssi read: ${rssi}")
     }
 
     override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
-        Log.i(TAG, "$address(${status}): mtu changed: ${mtu}")
-    }
-
-    override fun onServiceChanged(gatt: BluetoothGatt) {
-        Log.i(TAG, "$address: service changed")
+        Log.d(TAG, "$address(${status}): mtu changed: ${mtu}")
     }
 
     private fun connectOnce() {
@@ -211,40 +269,110 @@ class CBLBLEDevice(
     private fun getCBLService(): BluetoothGattService? {
         val gatt = peerGatt ?: return null
 
+        // debugging
         gatt.services.forEach {
             Log.d(TAG, "$address: found service: ${it.uuid}")
         }
 
-        return gatt.getService(P2P_NAMESPACE_ID)
+        return getCBLService(gatt)
     }
 
-    private fun findCBLCharacteristic(cblService: BluetoothGattService) {
-        setState(State.GET_CHARACTERISTICS) ?: return
-        val gatt = peerGatt ?: return
 
+    private fun readCharacteristics(cblService: BluetoothGattService) {
+        setState(State.GET_CHARACTERISTICS) ?: return
+
+        // debugging
         cblService.characteristics.forEach {
             Log.d(TAG, "$address: found characteristic: ${it.uuid} (${Integer.toHexString(it.properties)})")
         }
 
-        val characteristic = cblService.getCharacteristic(PORT_CHARACTERISTIC_ID)
+        readNextCharacteristic()
+    }
+
+    private fun readNextCharacteristic(): Boolean {
+        // if there are no more required characteristics, then we are done
+        Log.d(TAG, "$address: read next characteristic: ${requiredCharacteristics}")
+        if (requiredCharacteristics.isEmpty()) {
+            return false
+        }
+
+        val gatt = peerGatt ?: return true
+
+        val cblService = getCBLService(gatt) ?: return true
+
+        val uuid = requiredCharacteristics.removeAt(0)
+        val characteristic = cblService.getCharacteristic(uuid)
 
         if (characteristic == null) {
-            fail("CBL characteristic not found")
-            return
+            fail("CBL ${uuid} characteristic not found")
+            return true
         }
 
         if (!characteristic.isReadable()) {
-            fail("CBL characteristic is not readable")
-            return
+            fail("CBL ${uuid} characteristic is not readable")
+            return true
         }
 
         startTask { gatt.readCharacteristic(characteristic) }
+
+        return true
     }
 
-    private fun parseCBLCharacteristic(data: ByteArray) {
+    private fun parseCBLCharacteristic(characteristic: BluetoothGattCharacteristic, data: ByteArray) {
+        Log.i(TAG, "$address: characteristic read: ${data.size} bytes")
+        when (characteristic.uuid) {
+            ID_CHARACTERISTIC_ID -> {
+                cblId = data.toString(Charsets.UTF_8)
+                Log.d(TAG, "$address: got id: ${cblId}")
+            }
+
+            PORT_CHARACTERISTIC_ID -> {
+                data.toInt()?.let { port = it }
+                    ?: fail("CBL port characteristic read failed")
+                Log.d(TAG, "$address: got port: ${port}")
+            }
+
+            METADATA_CHARACTERISTIC_ID -> {
+                Log.d(TAG, "$address: got metadata: ${metadata}")
+                return
+            }
+
+            else -> {
+                Log.w(TAG, "$address: unrecognized CBL characteristic: ${characteristic.uuid}")
+                fail("unrecognized CBL characteristic")
+                return
+            }
+        }
+    }
+
+    private fun connected() {
         setState(State.CONNECTED) ?: return
-        cblId = data.toString(Charsets.UTF_8)
-        peerListener.addPeer(this)
+        onFound(this)
+    }
+
+    private fun opened(socket: BluetoothSocket?, onData: (String) -> Unit) {
+        taskComplete()
+
+        socket ?: return
+        setState(State.OPENED) ?: return
+
+        connection = BLEL2CAPConnection(
+            socket,
+            { connection: BLEL2CAPConnection, data: ByteArray -> onData(data.toString(Charsets.UTF_8)) },
+            { connection: BLEL2CAPConnection, err: Throwable? -> fail("l2cap connection failed", err) }
+        )
+        connection?.start()
+
+        Log.w(TAG, "$address: $device opened: ${socket.isConnected}")
+        onConnected(this)
+    }
+
+    private fun getCBLService(gatt: BluetoothGatt): BluetoothGattService? {
+        val cblService = gatt.getService(P2P_NAMESPACE_ID)
+        if (cblService == null) {
+            fail("CBL service not found")
+        }
+        return cblService
     }
 
     private fun retry(): Unit? {
@@ -256,8 +384,8 @@ class CBLBLEDevice(
         return null
     }
 
-    private fun fail(msg: String) {
-        Log.w(TAG, "$address: $msg")
+    private fun fail(msg: String, e: Throwable? = null) {
+        Log.w(TAG, "$address: $msg", e)
         close(State.FAILED)
     }
 
@@ -272,13 +400,13 @@ class CBLBLEDevice(
             state = newState
         }
 
-        Log.w(TAG, "$address: state transition: $prevState -> $newState")
-        if ((newState < State.DISCONNECTED) && (newState != prevState.next())) {
-            fail("unexpected state transition:  $prevState -> $newState")
-            return null
+        Log.i(TAG, "$address: state transition: $prevState -> $newState")
+        return if ((newState > State.DISCONNECTED) || (newState == prevState.next())) {
+            newState
+        } else {
+            fail("unexpected state transition:  $prevState -> $newState", Exception())
+            null
         }
-
-        return newState
     }
 
     private fun startTask(block: () -> Unit) {

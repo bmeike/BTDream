@@ -37,12 +37,33 @@ import kotlin.random.Random
 // Couchbase Lite P2P sync service UUID (randomly generated)
 val P2P_NAMESPACE_ID: UUID = UUID.fromString("E0C3793A-0739-42A2-A800-8BED236D8815")
 
+// Service characteristic whose value is the ID of the peer device
+val ID_CHARACTERISTIC_ID: UUID = UUID.fromString("A33AD1C8-2533-4FCC-B4F6-4465986E2243")
+
 // Service characteristic whose value is the L2CAP port (PSM) the peer is listening on
 val PORT_CHARACTERISTIC_ID: UUID = UUID.fromString("ABDD3056-28FA-441D-A470-55A75A52553A")
 
 // Service characteristic whose value is the peer's Fleece-encoded metadata (randomly generated)
 val METADATA_CHARACTERISTIC_ID: UUID = UUID.fromString("936D7669-E532-42BF-8B8D-97E3C1073F74")
 
+val CBL_CHARACTERISTICS = mapOf(
+    ID_CHARACTERISTIC_ID to "id",
+    PORT_CHARACTERISTIC_ID to "port",
+    METADATA_CHARACTERISTIC_ID to "metadata"
+)
+
+fun Int.toByteArray(): ByteArray {
+    val byteArray = ByteArray(2)
+    byteArray[0] = (this shr 8 and 0xFF).toByte()
+    byteArray[1] = (this and 0xFF).toByte()
+    return byteArray
+}
+
+fun ByteArray.toInt() = if (size != 2) {
+    null
+} else {
+    (this[0].toInt() and 0xFF shl 8) or (this[1].toInt() and 0xFF)
+}
 
 @SuppressWarnings("MissingPermission")
 class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallback() {
@@ -53,6 +74,7 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
 
     private val lock = Any()
     private val gattServer = AtomicReference<BluetoothGattServer?>(null)
+    private val l2CapPort = AtomicReference<Int?>(null)
     private var connections: MutableList<BLEL2CAPConnection>? = null
 
     fun start() {
@@ -67,6 +89,7 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         }
 
         closeL2CAPConnections()
+        l2CapPort.set(null)
 
         // stop the gatt server: this will stop the L2CAP server as well
         server?.close()
@@ -88,12 +111,19 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
     ) {
         Log.i(TAG, "characteristic read request from ${device.address}: ${characteristic.uuid}")
         when (characteristic.uuid) {
+            ID_CHARACTERISTIC_ID -> {
+                gattServer.get()
+                    ?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, DEVICE_ID)
+            }
+
             PORT_CHARACTERISTIC_ID -> {
-                gattServer.get()?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, DEVICE_ID)
+                gattServer.get()
+                    ?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, l2CapPort.get()?.toByteArray())
             }
 
             METADATA_CHARACTERISTIC_ID -> {
-                gattServer.get()?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                gattServer.get()
+                    ?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
             }
 
             else -> {
@@ -155,20 +185,15 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         }
 
         val cblService = BluetoothGattService(P2P_NAMESPACE_ID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
-        cblService.addCharacteristic(
-            BluetoothGattCharacteristic(
-                PORT_CHARACTERISTIC_ID,
-                BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
-                BluetoothGattCharacteristic.PERMISSION_READ
+        CBL_CHARACTERISTICS.keys.forEach { uuid ->
+            cblService.addCharacteristic(
+                BluetoothGattCharacteristic(
+                    uuid,
+                    BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
+                    BluetoothGattCharacteristic.PERMISSION_READ
+                )
             )
-        )
-        cblService.addCharacteristic(
-            BluetoothGattCharacteristic(
-                METADATA_CHARACTERISTIC_ID,
-                BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
-                BluetoothGattCharacteristic.PERMISSION_READ
-            )
-        )
+        }
         val server = btService.btMgr.openGattServer(btService.context, this)
         server.addService(cblService)
         Log.i(TAG, "gatt server started")
@@ -191,8 +216,12 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         CoroutineScope(Dispatchers.IO).launch {
             var serverSocket: BluetoothServerSocket? = null
             try {
-                serverSocket = btService.btAdapter.listenUsingL2capChannel()
+                serverSocket = btService.btAdapter.listenUsingInsecureL2capChannel()
                 Log.i(TAG, "l2cap server started @${serverSocket.psm}")
+                if (!l2CapPort.compareAndSet(null, serverSocket.psm)) {
+                    Log.w(TAG, "l2cap server already running")
+                    return@launch
+                }
                 while (gattServer.get() != null) {
                     Log.d(TAG, "awaiting l2cap connection")
                     serverSocket.accept()?.let { openL2CAPConnection(it) }
@@ -232,6 +261,8 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
     }
 
     private fun closeL2CAPConnections() {
+        l2CapPort.set(null)
+
         val connects: MutableList<BLEL2CAPConnection>?
         synchronized(lock) {
             connects = connections

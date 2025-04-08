@@ -17,8 +17,10 @@ package com.couchbase.lite.mobile.android.test.bt.provider.wifi
 
 import android.Manifest
 import android.util.Log
+import com.couchbase.lite.mobile.android.test.bt.provider.ConnectedPeer
 import com.couchbase.lite.mobile.android.test.bt.provider.Peer
 import com.couchbase.lite.mobile.android.test.bt.provider.Provider
+import com.couchbase.lite.mobile.android.test.bt.provider.VisiblePeer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.onCompletion
@@ -29,7 +31,8 @@ class WifiService : Provider {
         const val TAG = "WIFI_SVC"
     }
 
-    override val PERMISSIONS = listOf(
+    @SuppressWarnings("InlinedApi")
+    override val PERMISSIONS = setOf(
         Manifest.permission.ACCESS_WIFI_STATE,
         Manifest.permission.CHANGE_WIFI_STATE,
         Manifest.permission.ACCESS_NETWORK_STATE,
@@ -46,6 +49,14 @@ class WifiService : Provider {
     }
 
     override suspend fun startBrowsing(): Flow<Peer>? {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun connect(peer: VisiblePeer): Flow<String>? {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun send(peer: ConnectedPeer, msg: String) {
         TODO("Not yet implemented")
     }
 }

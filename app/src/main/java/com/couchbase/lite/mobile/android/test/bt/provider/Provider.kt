@@ -17,20 +17,7 @@ package com.couchbase.lite.mobile.android.test.bt.provider
 
 import kotlinx.coroutines.flow.Flow
 
-
-sealed class Peer(val id: String) {
-    class VanishedPeer(id: String) : Peer(id)
-
-    class VisiblePeer(
-        id: String,
-        val name: String,
-        val address: String,
-        val rssi: Int,
-        val metadata: Map<String, Any> = emptyMap()
-    ) : Peer(id) {
-        override fun toString() = "${name}(${id}) @${address} "
-    }
-
+abstract class Peer(val id: String) {
     override fun hashCode() = id.hashCode()
 
     override fun equals(other: Any?): Boolean {
@@ -39,8 +26,33 @@ sealed class Peer(val id: String) {
     }
 }
 
+class VanishedPeer(id: String) : Peer(id) {
+    override fun toString() = "-${id}"
+}
+
+open class VisiblePeer(
+    id: String,
+    val name: String,
+    val address: String,
+    val port: Int?
+) : Peer(id) {
+    override fun toString() = "+${name}(${id}) @${address}:${port}"
+}
+
+class ConnectedPeer(
+    id: String,
+    name: String,
+    address: String,
+    port: Int?
+) : VisiblePeer(id, name, address, port) {
+    override fun toString() = "o${name}(${id}) @${address}:${port}"
+}
+
+
 interface Provider {
-    val PERMISSIONS: List<String>
+    val PERMISSIONS: Set<String>
     suspend fun startPublishing(): Flow<Boolean>?
     suspend fun startBrowsing(): Flow<Peer>?
+    suspend fun connect(peer: VisiblePeer): Flow<String>?
+    suspend fun send(peer: ConnectedPeer, msg: String)
 }

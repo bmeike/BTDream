@@ -2,6 +2,7 @@ package com.couchbase.lite.mobile.android.test.bt.provider.ble
 
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
+import android.util.Log
 import androidx.lifecycle.AtomicReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,12 +28,12 @@ class BLEL2CAPConnection(
         get() = socket.get()?.remoteDevice
 
     fun start() {
-        inputStream ?: return
+        val ins = inputStream ?: return
         scope.launch {
             val buffer = ByteArray(1024)
             try {
                 while (true) {
-                    val n = inputStream?.read(buffer) ?: -1
+                    val n = ins.read(buffer) ?: -1
                     if (n < 0) break
                     onData(this@BLEL2CAPConnection, buffer.copyOf(n))
                 }
@@ -43,11 +44,11 @@ class BLEL2CAPConnection(
     }
 
     fun write(data: ByteArray) {
-        inputStream ?: return
+        val outs = outputStream ?: return
         scope.launch {
             try {
-                outputStream?.write(data)
-                outputStream?.flush()
+                outs.write(data)
+                outs.flush()
             } catch (e: IOException) {
                 close(e)
             }

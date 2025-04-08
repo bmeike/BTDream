@@ -44,9 +44,7 @@ class FlowTests {
             Log.d("#####", "#2: finished")
         }
 
-
         Log.d("#####", "start")
-
         val flow0 = flow {
             emit(channel.receive())
             awaitCancellation()
