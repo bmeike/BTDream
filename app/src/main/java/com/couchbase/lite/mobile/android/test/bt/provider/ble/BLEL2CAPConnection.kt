@@ -14,9 +14,11 @@ import java.io.OutputStream
 
 class BLEL2CAPConnection(
     _socket: BluetoothSocket,
-    private val onData: (connection: BLEL2CAPConnection, data: ByteArray) -> Unit,
+    private val onData: (String, ByteArray) -> Unit,
     private val onClose: (connection: BLEL2CAPConnection, error: Throwable?) -> Unit
 ) {
+    private val TAG = "BT_CONNECT"
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val socket = AtomicReference<BluetoothSocket?>(_socket)
@@ -27,6 +29,7 @@ class BLEL2CAPConnection(
     val remoteDevice: BluetoothDevice?
         get() = socket.get()?.remoteDevice
 
+
     fun start() {
         val ins = inputStream ?: return
         scope.launch {
@@ -35,7 +38,7 @@ class BLEL2CAPConnection(
                 while (true) {
                     val n = ins.read(buffer) ?: -1
                     if (n < 0) break
-                    onData(this@BLEL2CAPConnection, buffer.copyOf(n))
+                    onInboundData(buffer.copyOf(n))
                 }
             } catch (e: IOException) {
                 close(e)
@@ -43,7 +46,15 @@ class BLEL2CAPConnection(
         }
     }
 
+    fun onInboundData(data: ByteArray) {
+        Log.d(TAG, "received l2cap message from ${remoteDevice}: ${data.size}")
+        if (data.isEmpty()) return
+        val device = remoteDevice ?: return
+        onData(device.address, data)
+    }
+
     fun write(data: ByteArray) {
+        Log.d(TAG, "sending l2cap message to ${remoteDevice}: ${data.size}")
         val outs = outputStream ?: return
         scope.launch {
             try {

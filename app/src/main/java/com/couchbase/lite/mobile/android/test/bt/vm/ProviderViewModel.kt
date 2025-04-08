@@ -18,19 +18,17 @@ package com.couchbase.lite.mobile.android.test.bt.vm
 import android.content.Context
 import androidx.compose.runtime.MutableState
 import androidx.lifecycle.ViewModel
-import com.couchbase.lite.mobile.android.test.bt.provider.ConnectedPeer
 import com.couchbase.lite.mobile.android.test.bt.provider.Peer
-import com.couchbase.lite.mobile.android.test.bt.provider.VisiblePeer
 
 
 abstract class ProviderViewModel : ViewModel() {
-    abstract val peers: MutableState<Map<VisiblePeer, String>>
+    abstract val peers: MutableState<Map<Peer, String>>
 
     abstract fun getRequiredPermissions(context: Context): Set<String>
     abstract fun startPublishing()
     abstract fun stopPublishing()
-    abstract fun connect(peer: VisiblePeer)
-    abstract fun send(peer: ConnectedPeer)
     abstract fun startBrowsing()
     abstract fun stopBrowsing()
+    abstract fun connectPeer(peer: Peer)
+    abstract fun sendToPeer(peer: Peer, msg: String)
 }

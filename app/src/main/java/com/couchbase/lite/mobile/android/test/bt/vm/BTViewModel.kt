@@ -24,26 +24,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.util.fastFilterNotNull
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
-import com.couchbase.lite.mobile.android.test.bt.provider.ConnectedPeer
-import com.couchbase.lite.mobile.android.test.bt.provider.VanishedPeer
-import com.couchbase.lite.mobile.android.test.bt.provider.VisiblePeer
-import com.couchbase.lite.mobile.android.test.bt.provider.ble.BTService
+import com.couchbase.lite.mobile.android.test.bt.provider.Peer
+import com.couchbase.lite.mobile.android.test.bt.provider.PublisherState
+import com.couchbase.lite.mobile.android.test.bt.provider.ble.BLEService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 
-class BTViewModel(private val btService: BTService) : ProviderViewModel() {
+class BTViewModel(private val bleService: BLEService) : ProviderViewModel() {
     companion object {
         private const val TAG = "BT_MODEL"
     }
 
-    override val peers = mutableStateOf(emptyMap<VisiblePeer, String>())
+    override val peers = mutableStateOf(emptyMap<Peer, String>())
 
     private var browser: Job? = null
     private var publisher: Job? = null
+    private var server: Job? = null
 
-    override fun getRequiredPermissions(context: Context) = btService.PERMISSIONS.map {
+    override fun getRequiredPermissions(context: Context) = bleService.PERMISSIONS.map {
         if (ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED) it else null
     }.fastFilterNotNull().toSet()
 
@@ -54,36 +54,41 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
                 return
             }
 
-            publisher = viewModelScope.launch(Dispatchers.IO) {
+            server = viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    btService.startPublishing().collect {
-                        Log.i(TAG, "Publishing: $it")
+                    bleService.startServer().collect {
+                        when (it) {
+                            is PublisherState.Started -> Log.i(TAG, "Server started")
+                            is PublisherState.Stopped -> Log.i(TAG, "Server stopped", it.err)
+                            is PublisherState.Message -> {
+                                val currentPeers = peers.value.toMutableMap()
+                                currentPeers[it.peer] = it.msg
+                                peers.value = emptyMap() // ??? do *NOT* ask me why this is needed!  It is.
+                                peers.value = currentPeers.toMap()
+                            }
+                        }
                     }
                 } catch (e: SecurityException) {
-                    Log.e(TAG, "Insufficient permissions for publication", e)
+                    Log.e(TAG, "Insufficient permissions for server", e)
+                }
+            }
+
+            publisher = viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    bleService.startPublishing().collect {
+                        when (it) {
+                            is PublisherState.Started -> Log.i(TAG, "Publisher started")
+                            is PublisherState.Stopped -> Log.i(TAG, "Publisher stopped", it.err)
+                            else -> Log.w(TAG, "Publisher state: $it")
+                        }
+                    }
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "Insufficient permissions for publisher", e)
                 }
             }
         }
     }
 
-    override fun stopPublishing() {
-        val job: Job?
-        synchronized(this) {
-            job = publisher
-            publisher = null
-        }
-        job?.cancel()
-    }
-
-    override fun connect(peer: VisiblePeer) {
-        viewModelScope.launch(Dispatchers.IO) {
-            btService.connect(peer).collect { msg -> updateMessage(peer, msg) }
-        }
-    }
-
-    override fun send(peer: ConnectedPeer) {
-        TODO("Not yet implemented")
-    }
 
     override fun startBrowsing() {
         synchronized(this) {
@@ -93,20 +98,53 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
 
             browser = viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    btService.startBrowsing().collect { peer ->
-                        Log.i(TAG, "Peer changed state: ${peer}")
-                        peers.value.forEach { (p, msg) -> Log.i(TAG, "before peer ${p}: ${msg}") }
+                    bleService.startBrowsing().collect { peer ->
+                        Log.d(TAG, "Peer changed state: ${peer}")
                         val currentPeers = peers.value.toMutableMap()
                         currentPeers.remove(peer)
-                        if (!(peer is VanishedPeer)) { currentPeers[peer as VisiblePeer] = "discovered" }
-                        peers.value = currentPeers
-                        peers.value.forEach { (p, msg) -> Log.i(TAG, "after peer ${p}: ${msg}") }
+                        if (peer.state != Peer.State.LOST) {
+                            currentPeers[peer] = "discovered"
+                        }
+                        peers.value = emptyMap() // ??? do *NOT* ask me why this is needed!  It is.
+                        peers.value = currentPeers.toMap()
                     }
                 } catch (e: SecurityException) {
-                    Log.e(TAG, "Insufficient permissions for discovery", e)
+                    Log.e(TAG, "Insufficient permissions for browser", e)
                 }
             }
         }
+    }
+
+    override fun connectPeer(peer: Peer) {
+        if (peer.state != Peer.State.DISCOVERED) {
+            Log.w(TAG, "Attempt to connect to a peer that is not visible")
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            bleService.connectToPeer(peer).collect { msg ->
+                val currentPeers = peers.value.toMutableMap()
+                currentPeers[peer] = msg
+                peers.value = currentPeers.toMap()
+            }
+        }
+    }
+
+    override fun sendToPeer(peer: Peer, msg: String) {
+        viewModelScope.launch(Dispatchers.IO) { bleService.sendToPeer(peer, msg) }
+    }
+
+    override fun stopPublishing() {
+        val publisherJob: Job?
+        val serverJob: Job?
+        synchronized(this) {
+            publisherJob = publisher
+            publisher = null
+            serverJob = publisher
+            server = null
+        }
+        publisherJob?.cancel()
+        serverJob?.cancel()
+        Log.i(TAG, "Publisher stopped")
     }
 
     override fun stopBrowsing() {
@@ -117,13 +155,6 @@ class BTViewModel(private val btService: BTService) : ProviderViewModel() {
         }
         job?.cancel()
         peers.value = emptyMap()
-    }
-
-
-    // !!! This is just a ridiculously expensive way to do this
-    private fun updateMessage(peer: VisiblePeer, message: String) {
-        val currentPeers = peers.value.toMutableMap()
-        currentPeers[peer] = message
-        peers.value = currentPeers
+        Log.i(TAG, "Browser stopped")
     }
 }

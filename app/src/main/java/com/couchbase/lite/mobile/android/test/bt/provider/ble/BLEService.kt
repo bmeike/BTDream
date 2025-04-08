@@ -30,15 +30,14 @@ import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.annotation.RequiresPermission
-import com.couchbase.lite.mobile.android.test.bt.provider.ConnectedPeer
 import com.couchbase.lite.mobile.android.test.bt.provider.Peer
 import com.couchbase.lite.mobile.android.test.bt.provider.Provider
-import com.couchbase.lite.mobile.android.test.bt.provider.VanishedPeer
-import com.couchbase.lite.mobile.android.test.bt.provider.VisiblePeer
+import com.couchbase.lite.mobile.android.test.bt.provider.PublisherState
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.cancellable
+import java.io.IOException
 import java.lang.ref.WeakReference
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
@@ -60,7 +59,7 @@ class BlockingTask(private val task: Runnable) : Runnable {
 }
 
 @SuppressWarnings("MissingPermission")
-class BTService(context: Context) : Provider {
+class BLEService(context: Context) : Provider {
     companion object {
         private const val TAG = "BT_SVC"
     }
@@ -81,8 +80,8 @@ class BTService(context: Context) : Provider {
     private val btExecutor: Executor = Executors.newSingleThreadExecutor()
     private val ctxt = WeakReference(context.applicationContext)
 
-    private val pendingDevices: MutableMap<String, CBLBLEDevice> = mutableMapOf()
-    private val cblPeers: MutableMap<String, CBLBLEDevice> = mutableMapOf()
+    private val devicesByAddress: MutableMap<String, CBLBLEDevice> = mutableMapOf()
+    private val devicesById: MutableMap<String, CBLBLEDevice> = mutableMapOf()
 
     private val btServer = CBLBLEServer(this)
 
@@ -105,14 +104,8 @@ class BTService(context: Context) : Provider {
         PERMISSIONS = perms.toSet()
     }
 
-    fun runTaskBlocking(task: () -> Unit): BlockingTask {
-        val blockingTask = BlockingTask(task)
-        btExecutor.execute(blockingTask)
-        return blockingTask
-    }
-
     @RequiresPermission(Manifest.permission.BLUETOOTH_ADVERTISE)
-    override suspend fun startPublishing(): Flow<Boolean> {
+    override suspend fun startPublishing(): Flow<PublisherState> {
         val advertiser = btAdapter.bluetoothLeAdvertiser
 
         val data = AdvertiseData.Builder()
@@ -126,22 +119,18 @@ class BTService(context: Context) : Provider {
             .setTimeout(0)
             .build()
 
-        btServer.start()
-
         return callbackFlow {
             var advertisingTask: BlockingTask? = null
 
             val advertiseCallback = object : AdvertiseCallback() {
                 override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
                     advertisingTask?.done()
-                    Log.i(TAG, "Publication running")
-                    trySend(true)
+                    trySend(PublisherState.Started())
                 }
 
                 override fun onStartFailure(errorCode: Int) {
                     advertisingTask?.done()
-                    Log.w(TAG, "Publication failed: $errorCode")
-                    trySend(false)
+                    trySend(PublisherState.Stopped(IOException("Advertising failed: ${errorCode}")))
                 }
             }
 
@@ -153,8 +142,32 @@ class BTService(context: Context) : Provider {
             awaitClose {
                 runTaskBlocking {
                     advertiser.stopAdvertising(advertiseCallback)
+                    Log.i(TAG, "Publication ended")
+                }.done()
+            }
+        }.cancellable()
+    }
+
+    override suspend fun startServer(): Flow<PublisherState> {
+        return callbackFlow {
+            btServer.start(
+                { _ -> true },
+                { address, data ->
+                    val message = data.decodeToString()
+                    Log.d(TAG, "Received message from ${address}: ${message}")
+                    devicesByAddress[address]?.let { trySend(PublisherState.Message(Peer(it), message)) }
+                        ?: Log.w(TAG, "Data from unknown device: ${address}")
+                },
+                { address, err -> Log.w(TAG, "Connection closed: ${address}", err) }
+            )
+
+            Log.i(TAG, "Server started")
+            trySend(PublisherState.Started())
+
+            awaitClose {
+                runTaskBlocking {
                     btServer.stop()
-                    Log.i(TAG, "Publication stopped")
+                    Log.i(TAG, "Server stopped")
                 }.done()
             }
         }.cancellable()
@@ -164,48 +177,45 @@ class BTService(context: Context) : Provider {
     override suspend fun startBrowsing(): Flow<Peer> {
         Log.i(TAG, "Browsing started")
         return callbackFlow {
-            fun peerFound(peer: CBLBLEDevice) {
-                peer.cblId?.let { id ->
-                    cblPeers[id] ?: run {
-                        Log.i(TAG, "Adding peer: ${peer} (${id})")
-                        cblPeers[id] = peer
-                        trySend(VisiblePeer(id, peer.name, peer.address, peer.port))
-                    }
-                }
+            fun peerFound(device: CBLBLEDevice) {
+                // This device should have a non-null id, now.
+                // it should also be in the devicesByAddress map,
+                // so that we won't try to find it again.
+                val id = device.cblId ?: return
+                val prevDev = devicesById[id]
+                devicesById[id] = device
+                Log.d(TAG, "Discovered peer: ${prevDev} -> ${device}")
+                prevDev ?: trySend(Peer(device))
             }
 
-            fun peerConnected(peer: CBLBLEDevice) {
-                peer.cblId?.let { id ->
-                    Log.i(TAG, "Open peer: ${peer} (${id})")
-                    cblPeers[id] = peer
-                    trySend(ConnectedPeer(id, peer.name, peer.address, peer.port))
-                }
+            fun peerConnected(device: CBLBLEDevice) {
+                val id = device.cblId ?: return
+                Log.d(TAG, "Connected peer @${id}: ${device}")
+                devicesById[id] = device
+                trySend(Peer(device, Peer.State.CONNECTED))
             }
 
-            fun peerRemoved(peer: CBLBLEDevice) {
-                peer.cblId?.let { id ->
-                    Log.i(TAG, "Removing peer: ${peer} (${id})")
-                    cblPeers.remove(id)?.let { trySend(VanishedPeer(id)) }
-                    pendingDevices.remove(peer.address)
-                }
+            fun peerRemoved(device: CBLBLEDevice) {
+                val id = device.cblId ?: return
+                Log.d(TAG, "Removing peer @${id}: ${device}")
+                devicesByAddress.remove(device.address)
+                devicesById.remove(id)?.let { trySend(Peer(device, Peer.State.LOST)) }
             }
 
             scan { scan ->
                 val device = scan.device
                 val addr = device.address
 
-                // ??? Should check the pending device to see if anything has changed
-                // and replace and reconnect if appropriate?
-                if (!pendingDevices.containsKey(addr)) {
+                if (!devicesByAddress.containsKey(addr)) {
                     val cblDevice = CBLBLEDevice(
-                        this@BTService,
+                        this@BLEService,
                         device,
                         scan.rssi,
                         ::peerFound,
                         ::peerConnected,
                         ::peerRemoved
                     )
-                    pendingDevices[addr] = cblDevice
+                    devicesByAddress[addr] = cblDevice
                     cblDevice.connect()
                 }
             }
@@ -216,18 +226,30 @@ class BTService(context: Context) : Provider {
         }.cancellable()
     }
 
-    override suspend fun connect(peer: VisiblePeer): Flow<String> {
-        Log.i(TAG, "Connect to peer@ ${peer.address}:${peer.port}")
+    override suspend fun connectToPeer(peer: Peer): Flow<String> {
+        Log.d(TAG, "Connect to peer@ ${peer.address}:${peer.port}")
         return callbackFlow {
-            cblPeers[peer.id]?.open { trySend(it) }
+            devicesById[peer.id]?.open(
+                { trySend(it) },
+                // ??? This doesn't really handle the closure
+                { addr, err -> Log.w(TAG, "Connection failed: ${addr}", err) }
+            )
             awaitClose {
-                Log.i(TAG, "Connection closed@ ${peer.address}:${peer.port}")
+                Log.i(TAG, "Connection closed @${peer.address}:${peer.port}")
             }
         }
     }
 
-    override suspend fun send(peer: ConnectedPeer, msg: String) {
-        cblPeers[peer.id]?.send(msg)
+    override suspend fun sendToPeer(peer: Peer, msg: String) {
+        val device = devicesById[peer.id]
+        Log.d(TAG, "Send to peer ${peer}: ${msg}")
+        device?.send(msg)
+    }
+
+    fun runTaskBlocking(task: () -> Unit): BlockingTask {
+        val blockingTask = BlockingTask(task)
+        btExecutor.execute(blockingTask)
+        return blockingTask
     }
 
     private fun scan(scanListener: (ScanResult) -> Unit) {
@@ -256,17 +278,17 @@ class BTService(context: Context) : Provider {
 
             override fun onScanFailed(errorCode: Int) {
                 advertisingTask?.done()
-                Log.i(TAG, "Browsing failed")
+                Log.w(TAG, "Browsing failed")
             }
 
             override fun onBatchScanResults(results: List<ScanResult?>?) {
-                Log.i(TAG, "batch???")
+                Log.w(TAG, "batch???")
             }
         }
 
         advertisingTask = runTaskBlocking {
             btScanner.startScan(listOf(filter), settings, scanCallback)
-            Log.i(TAG, "Scan started")
+            Log.d(TAG, "Scan started")
         }
     }
 }

@@ -66,7 +66,7 @@ fun ByteArray.toInt() = if (size != 2) {
 }
 
 @SuppressWarnings("MissingPermission")
-class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallback() {
+class CBLBLEServer(private val bleService: BLEService) : BluetoothGattServerCallback() {
     companion object {
         private const val TAG = "BT_SERVER"
         private val DEVICE_ID = Random.nextInt(999999).toString().toByteArray(Charsets.UTF_8)
@@ -77,12 +77,18 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
     private val l2CapPort = AtomicReference<Int?>(null)
     private var connections: MutableList<BLEL2CAPConnection>? = null
 
-    fun start() {
+
+    fun start(
+        authenticateConnection: (BluetoothDevice) -> Boolean,
+        onInboundData: (String, ByteArray) -> Unit,
+        onConnectionClosed: (String?, Throwable?) -> Unit
+    ) {
         startGattServer()
-        startL2CAPServer()
+        startL2CAPServer(authenticateConnection, onInboundData, onConnectionClosed)
     }
 
     fun stop() {
+        // setting the gattServer null will stop the L2CAP server
         val server = gattServer.getAndSet(null)
         if (server == null) {
             Log.w(TAG, "gatt server already stopped")
@@ -91,7 +97,6 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         closeL2CAPConnections()
         l2CapPort.set(null)
 
-        // stop the gatt server: this will stop the L2CAP server as well
         server?.close()
     }
 
@@ -194,7 +199,7 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
                 )
             )
         }
-        val server = btService.btMgr.openGattServer(btService.context, this)
+        val server = bleService.btMgr.openGattServer(bleService.context, this)
         server.addService(cblService)
         Log.i(TAG, "gatt server started")
 
@@ -204,7 +209,11 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         }
     }
 
-    private fun startL2CAPServer() {
+    private fun startL2CAPServer(
+        authenticateConnection: (BluetoothDevice) -> Boolean,
+        onInboundData: (String, ByteArray) -> Unit,
+        onConnectionClosed: (String?, Throwable?) -> Unit
+    ) {
         synchronized(lock) {
             if (connections != null) {
                 Log.w(TAG, "l2cap server already started")
@@ -216,15 +225,23 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         CoroutineScope(Dispatchers.IO).launch {
             var serverSocket: BluetoothServerSocket? = null
             try {
-                serverSocket = btService.btAdapter.listenUsingInsecureL2capChannel()
+                serverSocket = bleService.btAdapter.listenUsingInsecureL2capChannel()
                 Log.i(TAG, "l2cap server started @${serverSocket.psm}")
                 if (!l2CapPort.compareAndSet(null, serverSocket.psm)) {
                     Log.w(TAG, "l2cap server already running")
                     return@launch
                 }
+
                 while (gattServer.get() != null) {
                     Log.d(TAG, "awaiting l2cap connection")
-                    serverSocket.accept()?.let { openL2CAPConnection(it) }
+                    serverSocket.accept()?.let {
+                        if (!authenticateConnection(it.remoteDevice)) {
+                            Log.w(TAG, "rejected l2cap connection from ${it.remoteDevice.address}")
+                            it.close()
+                            return@let
+                        }
+                        openL2CAPConnection(it, onInboundData, onConnectionClosed)
+                    }
                 }
             } catch (e: IOException) {
                 Log.w(TAG, "l2cap server failed", e)
@@ -235,29 +252,29 @@ class CBLBLEServer(private val btService: BTService) : BluetoothGattServerCallba
         }
     }
 
-    private fun openL2CAPConnection(socket: BluetoothSocket) {
+    private fun openL2CAPConnection(
+        socket: BluetoothSocket,
+        onInboundData: (String, ByteArray) -> Unit,
+        onConnectionClosed: (String?, Throwable?) -> Unit
+    ) {
         val connection = BLEL2CAPConnection(
             socket,
-            this::onL2CAPDataReceived,
-            this::onL2CAPConnectionClosed
-        )
+            onInboundData,
+            { conn, err ->
+                synchronized(lock) { connections?.remove(conn) }
+                onConnectionClosed(conn.remoteDevice?.address, err)
+            })
+        var added: Boolean
 
-        synchronized(lock) {
-            connections?.let {
-                it.add(connection)
-                connection.start()
-                Log.i(TAG, "accepted l2cap connection from ${socket.remoteDevice.address}")
-            }
+        synchronized(lock) { added = connections?.add(connection) ?: false }
+
+        if (!added) {
+            connection.close()
+            return
         }
-    }
 
-    private fun onL2CAPDataReceived(connection: BLEL2CAPConnection, data: ByteArray) {
-        connection.write(data) // just echo for now
-    }
-
-    private fun onL2CAPConnectionClosed(connection: BLEL2CAPConnection, error: Throwable?) {
-        Log.i(TAG, "closed l2cap connection from ${connection.remoteDevice?.address}", error)
-        synchronized(lock) { connections?.remove(connection) }
+        connection.start()
+        Log.i(TAG, "accepted l2cap connection from ${socket.remoteDevice.address}")
     }
 
     private fun closeL2CAPConnections() {

@@ -15,44 +15,45 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.provider
 
+import com.couchbase.lite.mobile.android.test.bt.provider.ble.CBLBLEDevice
 import kotlinx.coroutines.flow.Flow
 
-abstract class Peer(val id: String) {
+
+interface Provider {
+    val PERMISSIONS: Set<String>
+    suspend fun startPublishing(): Flow<PublisherState>?
+    suspend fun startBrowsing(): Flow<Peer>?
+    suspend fun startServer(): Flow<PublisherState>?
+    suspend fun connectToPeer(peer: Peer): Flow<String>?
+    suspend fun sendToPeer(peer: Peer, msg: String)
+}
+
+sealed interface PublisherState {
+    class Started() : PublisherState
+    data class Message(val peer: Peer, val msg: String) : PublisherState
+    data class Stopped(val err: Throwable? = null) : PublisherState
+}
+
+class Peer(device: CBLBLEDevice, val state: State = State.DISCOVERED) {
+    enum class State(private val sym: String) {
+        DISCOVERED("+"),
+        CONNECTED("!"),
+        LOST("-");
+
+        override fun toString() = sym
+    }
+
+    val id: String = device.cblId ?: device.address
+    val name: String = device.name
+    val address: String = device.address
+    val port: Int? = device.port
+
+    override fun toString() = "${state}${name}(${id}) @${address}:${port}"
+
     override fun hashCode() = id.hashCode()
 
     override fun equals(other: Any?): Boolean {
         val p = other as? Peer ?: return false
         return id == p.id
     }
-}
-
-class VanishedPeer(id: String) : Peer(id) {
-    override fun toString() = "-${id}"
-}
-
-open class VisiblePeer(
-    id: String,
-    val name: String,
-    val address: String,
-    val port: Int?
-) : Peer(id) {
-    override fun toString() = "+${name}(${id}) @${address}:${port}"
-}
-
-class ConnectedPeer(
-    id: String,
-    name: String,
-    address: String,
-    port: Int?
-) : VisiblePeer(id, name, address, port) {
-    override fun toString() = "o${name}(${id}) @${address}:${port}"
-}
-
-
-interface Provider {
-    val PERMISSIONS: Set<String>
-    suspend fun startPublishing(): Flow<Boolean>?
-    suspend fun startBrowsing(): Flow<Peer>?
-    suspend fun connect(peer: VisiblePeer): Flow<String>?
-    suspend fun send(peer: ConnectedPeer, msg: String)
 }

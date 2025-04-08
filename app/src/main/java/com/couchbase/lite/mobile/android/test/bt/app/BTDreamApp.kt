@@ -16,7 +16,7 @@
 package com.couchbase.lite.mobile.android.test.bt.app
 
 import android.app.Application
-import com.couchbase.lite.mobile.android.test.bt.provider.ble.BTService
+import com.couchbase.lite.mobile.android.test.bt.provider.ble.BLEService
 import com.couchbase.lite.mobile.android.test.bt.vm.BTViewModel
 import com.couchbase.lite.mobile.android.test.bt.vm.WifiViewModel
 import com.couchbase.lite.mobile.android.test.bt.provider.wifi.WifiService
@@ -39,7 +39,7 @@ class BTDreamApp : Application() {
             // dependency register modules
             modules(
                 module {
-                    single { BTService(get()) as BTService }
+                    single { BLEService(get()) as BLEService }
                     single { WifiService() as WifiService }
 
                     viewModel { BTViewModel(get()) }

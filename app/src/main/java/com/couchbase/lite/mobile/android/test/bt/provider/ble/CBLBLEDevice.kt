@@ -25,7 +25,7 @@ fun BluetoothGattCharacteristic.containsProperty(property: Int) = properties and
 
 @SuppressWarnings("MissingPermission")
 class CBLBLEDevice(
-    private val btService: BTService,
+    private val bleService: BLEService,
     private val device: BluetoothDevice,
     val rssi: Int,
     private val onFound: (CBLBLEDevice) -> Unit,
@@ -89,7 +89,7 @@ class CBLBLEDevice(
         connectOnce()
     }
 
-    fun open(onData: (String) -> Unit) {
+    fun open(onData: (String) -> Unit, onClose: (String?, Throwable?) -> Unit) {
         if (state >= State.OPENING) {
             return
         }
@@ -106,7 +106,7 @@ class CBLBLEDevice(
                 socket?.close()
                 socket = null
             }
-            opened(socket, onData)
+            opened(socket, onData, onClose)
         }
     }
 
@@ -125,6 +125,7 @@ class CBLBLEDevice(
     }
 
     fun send(msg: String) {
+        Log.d(TAG, "$address: send to connection ${connection}")
         val connect = connection ?: return
         connect.write(msg.toByteArray(Charsets.UTF_8))
     }
@@ -250,7 +251,7 @@ class CBLBLEDevice(
 
     private fun connectOnce() {
         setState(State.CONNECTING) ?: return
-        startTask { device.connectGatt(btService.context, false, this, BluetoothDevice.TRANSPORT_LE) }
+        startTask { device.connectGatt(bleService.context, false, this, BluetoothDevice.TRANSPORT_LE) }
     }
 
     private fun changeGattState(newState: Int) {
@@ -319,10 +320,10 @@ class CBLBLEDevice(
     }
 
     private fun parseCBLCharacteristic(characteristic: BluetoothGattCharacteristic, data: ByteArray) {
-        Log.i(TAG, "$address: characteristic read: ${data.size} bytes")
+        Log.d(TAG, "$address: characteristic read: ${data.size} bytes")
         when (characteristic.uuid) {
             ID_CHARACTERISTIC_ID -> {
-                cblId = data.toString(Charsets.UTF_8)
+                cblId = data.decodeToString()
                 Log.d(TAG, "$address: got id: ${cblId}")
             }
 
@@ -350,20 +351,21 @@ class CBLBLEDevice(
         onFound(this)
     }
 
-    private fun opened(socket: BluetoothSocket?, onData: (String) -> Unit) {
+    private fun opened(socket: BluetoothSocket?, onData: (String) -> Unit, onClose: (String?, Throwable?) -> Unit) {
         taskComplete()
 
         socket ?: return
+        // ??? If this fails the socket doesn't get closed
         setState(State.OPENED) ?: return
 
         connection = BLEL2CAPConnection(
             socket,
-            { connection: BLEL2CAPConnection, data: ByteArray -> onData(data.toString(Charsets.UTF_8)) },
-            { connection: BLEL2CAPConnection, err: Throwable? -> fail("l2cap connection failed", err) }
+            { _, data -> onData(data.decodeToString()) },
+            { conn, err -> onClose(conn.remoteDevice?.address, err) }
         )
         connection?.start()
 
-        Log.w(TAG, "$address: $device opened: ${socket.isConnected}")
+        Log.i(TAG, "$address: $device opened: ${socket.isConnected}")
         onConnected(this)
     }
 
@@ -400,7 +402,7 @@ class CBLBLEDevice(
             state = newState
         }
 
-        Log.i(TAG, "$address: state transition: $prevState -> $newState")
+        Log.d(TAG, "$address: state transition: $prevState -> $newState")
         return if ((newState > State.DISCONNECTED) || (newState == prevState.next())) {
             newState
         } else {
@@ -410,7 +412,7 @@ class CBLBLEDevice(
     }
 
     private fun startTask(block: () -> Unit) {
-        currentTask = btService.runTaskBlocking(block)
+        currentTask = bleService.runTaskBlocking(block)
     }
 
     private fun taskComplete() {

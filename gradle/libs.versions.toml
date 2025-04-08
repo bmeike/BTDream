@@ -12,10 +12,11 @@ kotlinxSerializationJson = "1.7.3"
 kotlinxSerializationJsonJvm = "1.8.0"
 lifecycleRuntimeKtx = "2.8.7"
 activityCompose = "1.10.1"
-composeBom = "2025.03.00"
+composeBom = "2025.03.01"
 runner = "1.6.2"
 runtimeLivedata = "1.7.8"
 navigationCompose = "2.8.9"
+ui = "1.7.8"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -43,4 +44,3 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koinAndroid" }
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koinCore" }
 kotlinx-serialization-json-jvm = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm", version.ref = "kotlinxSerializationJsonJvm" }
-

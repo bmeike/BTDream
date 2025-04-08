@@ -27,9 +27,11 @@ import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -64,8 +66,7 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.couchbase.lite.mobile.android.test.bt.R
-import com.couchbase.lite.mobile.android.test.bt.provider.ConnectedPeer
-import com.couchbase.lite.mobile.android.test.bt.provider.VisiblePeer
+import com.couchbase.lite.mobile.android.test.bt.provider.Peer
 import com.couchbase.lite.mobile.android.test.bt.vm.BTViewModel
 import com.couchbase.lite.mobile.android.test.bt.vm.ProviderViewModel
 import com.couchbase.lite.mobile.android.test.bt.vm.WifiViewModel
@@ -109,8 +110,8 @@ private val TOP_LEVEL_ROUTES = listOf(
 )
 
 private val TEXT_COLOR = mapOf(
-    VisiblePeer::class to darkVisibleText,
-    ConnectedPeer::class to darkConnectedText
+    Peer.State.DISCOVERED to darkVisibleText,
+    Peer.State.CONNECTED to darkConnectedText
 )
 
 @Serializable
@@ -174,7 +175,6 @@ fun ItemList(label: String, model: ProviderViewModel) {
     val peers by remember { model.peers }
     val text = remember { mutableStateMapOf<String, String>() }
 
-
     val showRational = remember { mutableStateOf(false) }
     val permissionState = rememberMultiplePermissionsState(
         model.getRequiredPermissions(LocalContext.current.findActivity()).toList()
@@ -197,8 +197,7 @@ fun ItemList(label: String, model: ProviderViewModel) {
         } else {
             LaunchedEffect(Unit) { discoverPeers(model) }
             LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                items(peers.keys.toList()) { peer ->
-                    val textColor = TEXT_COLOR[peer::class] ?: Color.Black
+                items(items = peers.keys.toList()) { peer ->
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -210,25 +209,45 @@ fun ItemList(label: String, model: ProviderViewModel) {
                                 .fillMaxWidth()
                                 .wrapContentHeight()
                                 .padding(top = 8.dp)
-                                .clickable { model.connect(peer) },
-                            text = peer.toString(),
-                            color = textColor,
-                            style = MaterialTheme.typography.bodyMedium)
-                        if (peer is ConnectedPeer) {
+                                .clickable { model.connectPeer(peer) },
+                            color = TEXT_COLOR[peer.state] ?: Color.Black,
+                            style = MaterialTheme.typography.bodyMedium,
+                            text = peer.toString()
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight()
+                                .padding(top = 8.dp)
+                        ) {
+                            val id = peer.id
                             TextField(
                                 modifier = Modifier
-                                    .fillMaxWidth()
+                                    .weight(1.0f)
                                     .wrapContentHeight()
                                     .padding(top = 4.dp),
                                 shape = RoundedCornerShape(8.dp),
-                                colors = TextFieldDefaults.colors().copy(
-                                    unfocusedIndicatorColor = darkSurface
-                                ),
+                                colors = TextFieldDefaults.colors().copy(unfocusedIndicatorColor = darkSurface),
                                 textStyle = MaterialTheme.typography.bodyLarge,
                                 singleLine = true,
-                                value = text[peer.id] ?: "",
-                                onValueChange = { text[peer.id] = it })
+                                value = text[id] ?: "",
+                                onValueChange = { text[id] = it })
+                            Button(
+                                modifier = Modifier
+                                    .padding(start = 2.dp)
+                                    .align(Alignment.CenterVertically)
+                                    .wrapContentHeight()
+                                    .wrapContentWidth(),
+                                onClick = {
+                                    model.sendToPeer(peer, text[id] ?: "")
+                                    text[id] = ""
+                                }
+                            ) {
+                                Text(text = "Send")
+                            }
                         }
+
                         HorizontalDivider(color = liteTertiary)
                     }
                 }

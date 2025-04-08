@@ -17,10 +17,9 @@ package com.couchbase.lite.mobile.android.test.bt.provider.wifi
 
 import android.Manifest
 import android.util.Log
-import com.couchbase.lite.mobile.android.test.bt.provider.ConnectedPeer
 import com.couchbase.lite.mobile.android.test.bt.provider.Peer
 import com.couchbase.lite.mobile.android.test.bt.provider.Provider
-import com.couchbase.lite.mobile.android.test.bt.provider.VisiblePeer
+import com.couchbase.lite.mobile.android.test.bt.provider.PublisherState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.onCompletion
@@ -42,8 +41,8 @@ class WifiService : Provider {
         Manifest.permission.NEARBY_WIFI_DEVICES
     )
 
-    override suspend fun startPublishing(): Flow<Boolean> {
-        return listOf(true).asFlow()
+    override suspend fun startPublishing(): Flow<PublisherState> {
+        return listOf(PublisherState.Started(), PublisherState.Stopped()).asFlow()
             .onStart { Log.i(TAG, "Publication started") }
             .onCompletion { Log.i(TAG, "Publication stopped") }
     }
@@ -52,11 +51,15 @@ class WifiService : Provider {
         TODO("Not yet implemented")
     }
 
-    override suspend fun connect(peer: VisiblePeer): Flow<String>? {
+    override suspend fun startServer(): Flow<PublisherState>? {
         TODO("Not yet implemented")
     }
 
-    override suspend fun send(peer: ConnectedPeer, msg: String) {
+    override suspend fun connectToPeer(peer: Peer): Flow<String>? {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun sendToPeer(peer: Peer, msg: String) {
         TODO("Not yet implemented")
     }
 }
