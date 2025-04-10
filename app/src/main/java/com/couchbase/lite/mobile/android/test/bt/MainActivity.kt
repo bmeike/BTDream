@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
             BTDreamTheme {
                 val nav = rememberNavController()
                 Scaffold(bottomBar = { BottomNav(nav) }) { innerPadding ->
-                    NavHost(nav, startDestination = Bluetooth, Modifier.padding(innerPadding)) {
+                    NavHost(nav, startDestination = Wifi, Modifier.padding(innerPadding)) {
                         composable<Bluetooth> {
                             wifiModel.stopPublishing()
                             wifiModel.stopBrowsing()

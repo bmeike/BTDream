@@ -323,7 +323,7 @@ private fun discoverPeers(model: ProviderViewModel) {
 private fun assembleRational(revoked: List<String>) = revoked.map { PERMISSION_RATIONALS[it] }
     .joinToString("\n")
 
-fun Context.findActivity(): Activity {
+private fun Context.findActivity(): Activity {
     var context = this
     while (context is ContextWrapper) {
         if (context is Activity) return context

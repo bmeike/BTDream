@@ -104,6 +104,31 @@ class BLEService(context: Context) : Provider {
         PERMISSIONS = perms.toSet()
     }
 
+    override suspend fun startServer(): Flow<PublisherState> {
+        return callbackFlow {
+            btServer.start(
+                { _ -> true },
+                { address, data ->
+                    val message = data.decodeToString()
+                    Log.d(TAG, "Received message from ${address}: ${message}")
+                    devicesByAddress[address]?.let { trySend(PublisherState.Message(Peer(it), message)) }
+                        ?: Log.w(TAG, "Data from unknown device: ${address}")
+                },
+                { address, err -> Log.w(TAG, "Connection closed: ${address}", err) }
+            )
+
+            Log.i(TAG, "Server begun")
+            trySend(PublisherState.Started())
+
+            awaitClose {
+                runTaskBlocking {
+                    btServer.stop()
+                    Log.i(TAG, "Server ended")
+                }.done()
+            }
+        }.cancellable()
+    }
+
     @RequiresPermission(Manifest.permission.BLUETOOTH_ADVERTISE)
     override suspend fun startPublishing(): Flow<PublisherState> {
         val advertiser = btAdapter.bluetoothLeAdvertiser
@@ -136,38 +161,13 @@ class BLEService(context: Context) : Provider {
 
             advertisingTask = runTaskBlocking {
                 advertiser.startAdvertising(settings, data, null, advertiseCallback)
-                Log.i(TAG, "Publication started")
+                Log.i(TAG, "Publication begun")
             }
 
             awaitClose {
                 runTaskBlocking {
                     advertiser.stopAdvertising(advertiseCallback)
                     Log.i(TAG, "Publication ended")
-                }.done()
-            }
-        }.cancellable()
-    }
-
-    override suspend fun startServer(): Flow<PublisherState> {
-        return callbackFlow {
-            btServer.start(
-                { _ -> true },
-                { address, data ->
-                    val message = data.decodeToString()
-                    Log.d(TAG, "Received message from ${address}: ${message}")
-                    devicesByAddress[address]?.let { trySend(PublisherState.Message(Peer(it), message)) }
-                        ?: Log.w(TAG, "Data from unknown device: ${address}")
-                },
-                { address, err -> Log.w(TAG, "Connection closed: ${address}", err) }
-            )
-
-            Log.i(TAG, "Server started")
-            trySend(PublisherState.Started())
-
-            awaitClose {
-                runTaskBlocking {
-                    btServer.stop()
-                    Log.i(TAG, "Server stopped")
                 }.done()
             }
         }.cancellable()

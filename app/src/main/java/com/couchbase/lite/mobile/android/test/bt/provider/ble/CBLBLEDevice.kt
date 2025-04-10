@@ -8,6 +8,7 @@ import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothSocket
 import android.util.Log
+import com.couchbase.lite.mobile.android.test.bt.provider.CBLDevice
 import java.util.UUID
 
 
@@ -31,7 +32,7 @@ class CBLBLEDevice(
     private val onFound: (CBLBLEDevice) -> Unit,
     private val onConnected: (CBLBLEDevice) -> Unit,
     private val onLost: (CBLBLEDevice) -> Unit,
-) : BluetoothGattCallback() {
+) : BluetoothGattCallback(), CBLDevice {
     companion object {
         private const val TAG = "CBL_DEVICE"
     }
@@ -51,19 +52,19 @@ class CBLBLEDevice(
     }
 
 
-    val address: String
+    override val address: String
         get() = device.address
 
-    val name: String
+    override val name: String
         get() = device.name
 
-    var port: Int? = null
+    override var port: Int? = null
         private set
 
-    var cblId: String? = null
+    override var cblId: String? = null
         private set
 
-    var metadata: Map<String, Any>? = null
+    override var metadata: Map<String, Any>? = null
         private set
 
     var state = State.DISCOVERED

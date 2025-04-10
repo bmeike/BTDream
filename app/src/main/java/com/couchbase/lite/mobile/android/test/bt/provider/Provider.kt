@@ -15,26 +15,34 @@
 //
 package com.couchbase.lite.mobile.android.test.bt.provider
 
-import com.couchbase.lite.mobile.android.test.bt.provider.ble.CBLBLEDevice
+import com.couchbase.lite.mobile.android.test.bt.provider.ble.CBLBLEDevice.State
 import kotlinx.coroutines.flow.Flow
 
 
 interface Provider {
     val PERMISSIONS: Set<String>
-    suspend fun startPublishing(): Flow<PublisherState>?
-    suspend fun startBrowsing(): Flow<Peer>?
-    suspend fun startServer(): Flow<PublisherState>?
+    suspend fun startServer(): Flow<PublisherState>
+    suspend fun startPublishing(): Flow<PublisherState>
+    suspend fun startBrowsing(): Flow<Peer>
     suspend fun connectToPeer(peer: Peer): Flow<String>?
     suspend fun sendToPeer(peer: Peer, msg: String)
 }
 
+interface CBLDevice {
+    val cblId: String?
+    val address: String
+    val name: String
+    val port: Int?
+    val metadata: Map<String, Any>?
+}
+
 sealed interface PublisherState {
-    class Started() : PublisherState
+    class Started : PublisherState
     data class Message(val peer: Peer, val msg: String) : PublisherState
     data class Stopped(val err: Throwable? = null) : PublisherState
 }
 
-class Peer(device: CBLBLEDevice, val state: State = State.DISCOVERED) {
+class Peer(device: CBLDevice, val state: State = State.DISCOVERED) {
     enum class State(private val sym: String) {
         DISCOVERED("+"),
         CONNECTED("!"),

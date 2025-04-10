@@ -40,7 +40,7 @@ class BTDreamApp : Application() {
             modules(
                 module {
                     single { BLEService(get()) as BLEService }
-                    single { WifiService() as WifiService }
+                    single { WifiService(get()) as WifiService }
 
                     viewModel { BTViewModel(get()) }
                     viewModel { WifiViewModel(get()) }
