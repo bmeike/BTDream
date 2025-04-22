@@ -68,7 +68,7 @@ fun ByteArray.toInt() = if (size != 2) {
 @SuppressWarnings("MissingPermission")
 class CBLBLEServer(private val bleService: BLEService) : BluetoothGattServerCallback() {
     companion object {
-        private const val TAG = "BT_SERVER"
+        private const val TAG = "BLE_SERVER"
         private val DEVICE_ID = Random.nextInt(100000, 999999).toString().toByteArray(Charsets.UTF_8)
     }
 

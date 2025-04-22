@@ -21,6 +21,7 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresExtension
 import androidx.lifecycle.AtomicReference
 import com.couchbase.lite.mobile.android.test.bt.provider.CBLDevice
 import com.couchbase.lite.mobile.android.test.bt.provider.Peer
@@ -37,10 +38,13 @@ import kotlinx.coroutines.launch
 import java.io.IOException
 import java.lang.ref.WeakReference
 import java.net.ServerSocket
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 import kotlin.random.Random
 
 
-const val SERVICE_TYPE = "_couchbaseP2P._tcp."
+const val SERVICE_TYPE = "_couchbaseP2P._tcp"
+const val SERVICE_SUBTYPE = "_btdreams"
 
 class CBLWiFiDevice(
     override val cblId: String?,
@@ -68,6 +72,7 @@ class WifiService(context: Context) : Provider {
     private val ctxt = WeakReference(context.applicationContext)
     private var serverSocket = AtomicReference<ServerSocket?>(null)
 
+    private val wifiExecutor: Executor = Executors.newSingleThreadExecutor()
     private val devicesByAddress: MutableMap<String, CBLWiFiDevice> = mutableMapOf()
 
     init {
@@ -79,9 +84,8 @@ class WifiService(context: Context) : Provider {
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.ACCESS_FINE_LOCATION,
         )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            perms.add(Manifest.permission.NEARBY_WIFI_DEVICES)
-        }
+
+        perms.add(Manifest.permission.NEARBY_WIFI_DEVICES)
         PERMISSIONS = perms.toSet()
     }
 
@@ -94,6 +98,7 @@ class WifiService(context: Context) : Provider {
         }
     }
 
+    @RequiresExtension(extension = Build.VERSION_CODES.TIRAMISU, version = 17)
     override suspend fun startPublishing(): Flow<PublisherState> {
         val socket = ServerSocket(0)
         if (!serverSocket.compareAndSet(null, socket)) {
@@ -113,24 +118,24 @@ class WifiService(context: Context) : Provider {
 
         return callbackFlow {
             val registrationCallback = object : NsdManager.RegistrationListener {
-                override fun onServiceRegistered(NsdServiceInfo: NsdServiceInfo) {
-                    Log.i(TAG, "Service registered")
+                override fun onServiceRegistered(info: NsdServiceInfo) {
+                    Log.i(TAG, "Service registered: ${info}")
                     trySend(PublisherState.Started())
                 }
 
-                override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                    Log.i(TAG, "Service registration failed")
+                override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) {
+                    Log.i(TAG, "Service registration failed (${errorCode}): ${info}")
                     trySend(PublisherState.Stopped(IOException("Registration failed: ${errorCode}")))
                 }
 
-                override fun onServiceUnregistered(arg0: NsdServiceInfo) {
-                    Log.i(TAG, "Service unregistered")
+                override fun onServiceUnregistered(info: NsdServiceInfo) {
+                    Log.i(TAG, "Service unregistered: ${info}")
                     trySend(PublisherState.Stopped())
                 }
 
-                override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                    Log.i(TAG, "Service unregistration failed")
-                    trySend(PublisherState.Stopped(IOException("Unregistration failed???: ${errorCode}")))
+                override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) {
+                    Log.i(TAG, "Service unregistration failed (${errorCode}): ${info}")
+                    trySend(PublisherState.Stopped(IOException("Unregistration failed: ${errorCode}")))
                 }
             }
 
@@ -138,8 +143,11 @@ class WifiService(context: Context) : Provider {
                 serviceName = "BTDreams-${Random.nextInt(10, 99)}"
                 serviceType = SERVICE_TYPE
                 port = socket.localPort
+                setAttribute("cblId", Random.nextInt(1000, 9999).toString())
+                subtypes = setOf(SERVICE_SUBTYPE)
             }
 
+            Log.i(TAG, "Registering service: $serviceInfo")
             wifiMgr.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationCallback)
             Log.i(TAG, "Registration begun")
 
@@ -152,7 +160,6 @@ class WifiService(context: Context) : Provider {
     override suspend fun startBrowsing(): Flow<Peer> {
         return callbackFlow {
             val resolveListener = object : NsdManager.ResolveListener {
-
                 override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
                     // Called when the resolve fails. Use the error code to debug.
                     Log.w(TAG, "Resolve failed: $errorCode")
@@ -164,6 +171,27 @@ class WifiService(context: Context) : Provider {
                     val device = CBLWiFiDevice(null, serviceInfo.serviceName, address, serviceInfo.port, null)
                     devicesByAddress.put(address, device)
                     trySend(Peer(device))
+
+                    wifiMgr.registerServiceInfoCallback(
+                        serviceInfo,
+                        wifiExecutor,
+                        object : NsdManager.ServiceInfoCallback {
+                            override fun onServiceInfoCallbackRegistrationFailed(code: Int) {
+                                Log.w(TAG, "Service info callback registration failed: $code")
+                            }
+
+                            override fun onServiceUpdated(info: NsdServiceInfo) {
+                                Log.w(TAG, "Service info updated: $info")
+                            }
+
+                            override fun onServiceLost() {
+                                Log.w(TAG, "Service info lost (info)")
+                            }
+
+                            override fun onServiceInfoCallbackUnregistered() {
+                                Log.w(TAG, "Service info callback unregistered")
+                            }
+                        })
                 }
             }
             val discoveryListener = object : NsdManager.DiscoveryListener {
@@ -186,11 +214,16 @@ class WifiService(context: Context) : Provider {
                     wifiMgr.stopServiceDiscovery(this)
                 }
 
+                @RequiresExtension(extension = Build.VERSION_CODES.TIRAMISU, version = 12)
                 override fun onServiceFound(service: NsdServiceInfo) {
                     Log.d(TAG, "Service discovered: $service")
-                    if (SERVICE_TYPE == service.serviceType) {
-                        try { wifiMgr.resolveService(service, resolveListener) }
-                        catch (e: Exception) { Log.e(TAG, "Failed to resolve service: $service", e) }
+                    if (("${SERVICE_TYPE}." == service.serviceType) && (service.subtypes.contains(SERVICE_SUBTYPE))) {
+                        try {
+                            Log.d(TAG, "Resolving  discovered: $service")
+                            wifiMgr.resolveService(service, resolveListener)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to resolve service: $service", e)
+                        }
                     }
                 }
 

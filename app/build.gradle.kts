@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         applicationId = "com.couchbase.lite.mobile.android.test.bt"
-        minSdk = 30
+        minSdk = 34
         targetSdk = 35
         versionCode = 2
         versionName = "2.0"

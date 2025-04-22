@@ -76,7 +76,7 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import kotlinx.serialization.Serializable
 
 
-private const val TAG = "BT_DREAM_UI"
+private const val TAG = "DREAM_UI"
 
 @SuppressLint("InlinedApi")
 private val PERMISSION_RATIONALS = mapOf(

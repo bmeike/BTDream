@@ -61,7 +61,7 @@ class BlockingTask(private val task: Runnable) : Runnable {
 @SuppressWarnings("MissingPermission")
 class BLEService(context: Context) : Provider {
     companion object {
-        private const val TAG = "BT_SVC"
+        private const val TAG = "BLE_SVC"
     }
 
     override val PERMISSIONS: Set<String>

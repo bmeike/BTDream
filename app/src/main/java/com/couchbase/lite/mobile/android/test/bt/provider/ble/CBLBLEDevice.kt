@@ -34,7 +34,7 @@ class CBLBLEDevice(
     private val onLost: (CBLBLEDevice) -> Unit,
 ) : BluetoothGattCallback(), CBLDevice {
     companion object {
-        private const val TAG = "CBL_DEVICE"
+        private const val TAG = "BLE_DEVICE"
     }
 
     enum class State {

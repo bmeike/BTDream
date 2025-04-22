@@ -34,7 +34,7 @@ import kotlinx.coroutines.launch
 
 class BTViewModel(private val bleService: BLEService) : ProviderViewModel() {
     companion object {
-        private const val TAG = "BT_MODEL"
+        private const val TAG = "BLE_MODEL"
     }
 
     override val peers = mutableStateOf(emptyMap<Peer, String>())
@@ -77,8 +77,8 @@ class BTViewModel(private val bleService: BLEService) : ProviderViewModel() {
                 try {
                     bleService.startPublishing().collect {
                         when (it) {
-                            is PublisherState.Started -> Log.i(TAG, "Publisher started")
-                            is PublisherState.Stopped -> Log.i(TAG, "Publisher stopped", it.err)
+                            is PublisherState.Started -> Log.i(TAG, "Publisher notified started")
+                            is PublisherState.Stopped -> Log.i(TAG, "Publisher notified stopped", it.err)
                             else -> Log.w(TAG, "Publisher state: $it")
                         }
                     }

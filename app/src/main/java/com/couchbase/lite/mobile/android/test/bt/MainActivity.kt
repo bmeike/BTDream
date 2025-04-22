@@ -14,7 +14,10 @@
 // limitations under the License.
 package com.couchbase.lite.mobile.android.test.bt
 
+import android.os.Build
+import android.util.Log
 import android.os.Bundle
+import android.os.ext.SdkExtensions
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.padding
@@ -36,6 +39,8 @@ import org.koin.androidx.viewmodel.ext.android.getViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        Log.d("MAIN", "V${Build.VERSION.SDK_INT}.${SdkExtensions.getExtensionVersion(Build.VERSION_CODES.TIRAMISU)}")
 
         val btModel = getViewModel<BTViewModel>()
         val wifiModel = getViewModel<WifiViewModel>()

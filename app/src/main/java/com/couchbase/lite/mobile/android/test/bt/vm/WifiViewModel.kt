@@ -75,8 +75,8 @@ class WifiViewModel(private val wifiService: WifiService) : ProviderViewModel() 
                 try {
                     wifiService.startPublishing().collect {
                         when (it) {
-                            is PublisherState.Started -> Log.i(TAG, "Publisher started")
-                            is PublisherState.Stopped -> Log.i(TAG, "Publisher stopped", it.err)
+                            is PublisherState.Started -> Log.i(TAG, "Publisher notified started")
+                            is PublisherState.Stopped -> Log.i(TAG, "Publisher notified stopped", it.err)
                             else -> Log.w(TAG, "Publisher state: $it")
                         }
                     }

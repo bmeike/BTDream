@@ -17,7 +17,7 @@ class BLEL2CAPConnection(
     private val onData: (String, ByteArray) -> Unit,
     private val onClose: (connection: BLEL2CAPConnection, error: Throwable?) -> Unit
 ) {
-    private val TAG = "BT_CONNECT"
+    private val TAG = "BLE_CON"
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
